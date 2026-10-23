@@ -167,28 +167,6 @@
 <body>
   <div id="exambro-root-wrapper">
     <!-- ==========================================================================
-         BANNER INDIKATOR MODE PREVIEW (HANYA MUNCUL JIKA IS_PREVIEW = true)
-         ========================================================================== -->
-    <div id="preview-mode-banner" class="hidden no-print bg-amber-500 text-slate-950 px-4 py-2 text-xs sm:text-sm font-semibold shadow-md relative z-50">
-      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <span class="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-950 text-amber-400 text-xs font-bold">
-            <i class="fa-solid fa-flask"></i>
-          </span>
-          <span><strong>MODE PREVIEW AKTIF:</strong> Menggunakan memori lokal browser (2 sampel data). Ubah <code class="bg-amber-600/30 px-1.5 py-0.5 rounded font-mono">IS_PREVIEW = false</code> untuk koneksi penuh ke Supabase.</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <button onclick="window.app.quickPreviewLogin('student')" class="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded-lg text-xs font-bold transition shadow-sm">
-            <i class="fa-solid fa-user-graduate mr-1"></i> Pintas Siswa
-          </button>
-          <button onclick="window.app.quickPreviewLogin('admin')" class="bg-white hover:bg-slate-100 text-slate-900 px-3 py-1 rounded-lg text-xs font-bold transition shadow-sm">
-            <i class="fa-solid fa-user-shield mr-1"></i> Pintas Admin
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==========================================================================
          PERISAI ANTI-CURANG & ANTI-SCREENSHOT (MUNCUL SAAT KEHILANGAN FOKUS/TAB)
          ========================================================================== -->
     <div id="security-blur-shield">
@@ -237,48 +215,61 @@
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
     // ============================================================================
-    // KONFIGURASI APLIKASI (SAKLAR DEPLOYMENT)
+    // KONFIGURASI APLIKASI (SAKLAR PREVIEW vs PRODUKSI SUPABASE)
     // ============================================================================
-    const IS_PREVIEW = false; // Ubah menjadi false SAAT DEPLOY agar mode preview & data dummy hilang dan terhubung 100% ke Supabase
-    const SUPABASE_URL = "https://lphwwdqmgidvhnwpvdnz.supabase.co";
-    const SUPABASE_ANON_KEY = "sb_publishable_KD9o_q0AuSuJALD8Q_UlQg_3yvGsvRe";
+    const IS_PREVIEW = false; // Ubah menjadi false SAAT DEPLOY agar terhubung 100% ke Supabase
+    const SUPABASE_URL = 'https://lphwwdqmgidvhnwpvdnz.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_KD9o_q0AuSuJALD8Q_UlQg_3yvGsvRe';
 
-    // Inisialisasi Client Supabase ketika IS_PREVIEW = false
-    let supabase = null;
-    if (!IS_PREVIEW && SUPABASE_URL !== "URL_SUPABASE_ANDA" && SUPABASE_ANON_KEY !== "ANON_KEY_ANDA") {
-      supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    }
+    const supabase =
+      !IS_PREVIEW && SUPABASE_URL && SUPABASE_URL.startsWith('http')
+        ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+        : null;
 
-    // ============================================================================
-    // REGISTRASI SERVICE WORKER PWA SECARA DINAMIS (1 FILE BLOB)
-    // ============================================================================
+    // Registrasi Service Worker PWA Dinamis via Blob (Aman untuk Iframe & Blogger)
     const registerDynamicPWA = () => {
-      if ('serviceWorker' in navigator) {
-        try {
+      try {
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
           const swCode = `
             self.addEventListener('install', (e) => self.skipWaiting());
             self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-            self.addEventListener('fetch', (e) => {});
+            self.addEventListener('fetch', () => {});
           `;
           const blob = new Blob([swCode], { type: 'application/javascript' });
           const swUrl = URL.createObjectURL(blob);
           navigator.serviceWorker.register(swUrl).catch(() => {});
-        } catch (err) {
-          // Abaikan jika diblokir oleh sandbox iframe
         }
+      } catch (e) {
+        // Abaikan jika browser/iframe membatasi Service Worker
       }
     };
 
     // ============================================================================
-    // STATE APLIKASI & DATA DUMMY MINIMALIS (MAKSIMAL 1-2 BARIS SAAT PREVIEW)
+    // STATE APLIKASI & DATA MASTER TERPADU
     // ============================================================================
     const state = {
       role: null, // 'student' | 'admin' | null
       loginTab: 'student', // 'student' | 'admin'
       currentUser: null,
-      adminMenu: 'dashboard', // 'dashboard' | 'students' | 'exams' | 'results'
+      adminMenu: 'dashboard', // 'dashboard' | 'master' | 'exams' | 'results'
+      masterTab: 'students', // 'students' | 'classes' | 'subjects' | 'teachers' | 'periods' | 'accounts' | 'logs'
+
+      // Filter & Pencarian pada Data Master
+      studentSearch: '',
+      studentClassFilter: 'ALL',
+      studentStatusFilter: 'ACTIVE', // 'ACTIVE' | 'ARCHIVED' | 'ALL'
+      selectedStudentIds: [],
+      classLevelFilter: 'ALL', // 'ALL' | 'VII' | 'VIII' | 'IX'
+      classPeriodFilter: 'ALL',
+      subjectSearch: '',
+      subjectLevelFilter: 'ALL',
+      teacherSearch: '',
+      accountSearch: '',
+      accountClassFilter: 'ALL',
+      showPrintCardsPreview: false,
+
       selectedExamForQuestions: null,
-      cardClassFilter: 'ALL',
+      examPeriodFilter: 'ACTIVE',
       resultExamFilter: 'ALL',
 
       // State Ujian Siswa
@@ -292,31 +283,111 @@
       isExamRunning: false,
       lastViolationTimestamp: 0,
 
-      // Koleksi Data
+      // Koleksi Data Master & Ujian
+      academic_years: [],
+      classes: [],
+      subjects: [],
+      teachers: [],
       students: [],
       exams: [],
       questions: [],
-      exam_sessions: []
+      exam_sessions: [],
+      audit_logs: []
     };
 
-    // Inisialisasi Data Dummy Minimalis (HANYA JIKA IS_PREVIEW = true)
+    // Fungsi pembantu mencatat Riwayat Perubahan (Audit Log)
+    const recordAuditLog = async (actionType, entityName, description) => {
+      const actor = state.currentUser?.email || state.currentUser?.name || 'Administrator';
+      const newLog = {
+        id: 'log-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+        actor,
+        action_type: actionType,
+        entity_name: entityName,
+        description,
+        created_at: new Date().toISOString()
+      };
+      state.audit_logs.unshift(newLog);
+
+      if (!IS_PREVIEW && supabase) {
+        try {
+          await supabase.from('audit_logs').insert([{
+            actor: newLog.actor,
+            action_type: newLog.action_type,
+            entity_name: newLog.entity_name,
+            description: newLog.description,
+            created_at: newLog.created_at
+          }]);
+        } catch (e) {}
+      }
+    };
+
+    // Hash/Masking sederhana untuk memastikan password tidak tampil plain-text
+    const maskPasswordDisplay = () => '••••••••';
+
+    const getActiveAcademicYear = () => {
+      return state.academic_years.find((p) => p.is_active) || state.academic_years[0] || { id: 'ay-1', year_name: '2026/2027', semester: 'Ganjil', is_active: true };
+    };
+
+    // Inisialisasi Data Awal (Saat Mode Preview)
     const initPreviewDummyData = () => {
       if (!IS_PREVIEW) return;
+
+      state.academic_years = [
+        { id: 'ay-1', year_name: '2026/2027', semester: 'Ganjil', is_active: true, created_at: new Date().toISOString() },
+        { id: 'ay-2', year_name: '2025/2026', semester: 'Genap', is_active: false, created_at: new Date().toISOString() }
+      ];
+
+      // Daftar Kelas Wajib: VII.1-VII.4, VIII.1-VIII.4, IX.1-IX.5
+      const defaultClasses = [
+        { level: 'VII', name: 'VII.1' }, { level: 'VII', name: 'VII.2' }, { level: 'VII', name: 'VII.3' }, { level: 'VII', name: 'VII.4' },
+        { level: 'VIII', name: 'VIII.1' }, { level: 'VIII', name: 'VIII.2' }, { level: 'VIII', name: 'VIII.3' }, { level: 'VIII', name: 'VIII.4' },
+        { level: 'IX', name: 'IX.1' }, { level: 'IX', name: 'IX.2' }, { level: 'IX', name: 'IX.3' }, { level: 'IX', name: 'IX.4' }, { level: 'IX', name: 'IX.5' }
+      ];
+      state.classes = defaultClasses.map((c, i) => ({
+        id: 'cls-' + (i + 1),
+        level: c.level,
+        class_name: c.name,
+        academic_year: '2026/2027',
+        is_archived: false
+      }));
+
+      state.subjects = [
+        { id: 'sub-1', code: 'IPA', name: 'Ilmu Pengetahuan Alam (IPA)', level: 'IX', is_archived: false },
+        { id: 'sub-2', code: 'MAT', name: 'Matematika', level: 'Semua', is_archived: false }
+      ];
+
+      state.teachers = [
+        { id: 'tch-1', nip: '198504122010011008', name: 'Budi Santoso, S.Pd., M.Si.', subject_code: 'IPA', subject_name: 'Ilmu Pengetahuan Alam (IPA)', is_archived: false },
+        { id: 'tch-2', nip: '199008212015022003', name: 'Ratna Dewi, S.Pd.', subject_code: 'MAT', subject_name: 'Matematika', is_archived: false }
+      ];
+
       state.students = [
         {
           id: 'std-1',
           nisn: '0081234567',
+          username: '0081234567',
+          exam_number: 'UJ-26-001',
           name: 'Ahmad Fauzi Pratama',
-          class_name: 'XII MIPA 1',
-          password: 'ujian123',
+          gender: 'L',
+          class_name: 'IX.1',
+          academic_year: '2026/2027',
+          password: 'siswa123',
+          can_take_exam: true,
+          is_archived: false,
           created_at: new Date().toISOString()
         },
         {
           id: 'std-2',
           nisn: '0087654321',
+          username: '0087654321',
+          exam_number: 'UJ-26-002',
           name: 'Siti Nabila Putri',
-          class_name: 'XII MIPA 1',
-          password: 'ujian456',
+          gender: 'P',
+          class_name: 'IX.1',
+          academic_year: '2026/2027',
+          password: 'siswa123',
+          can_take_exam: true,
+          is_archived: false,
           created_at: new Date().toISOString()
         }
       ];
@@ -325,10 +396,16 @@
         {
           id: 'exm-1',
           title: 'Ujian Sekolah Berbasis Smartphone (USBS)',
-          subject: 'Biologi & Sains Terpadu',
+          subject: 'Ilmu Pengetahuan Alam (IPA)',
+          subject_code: 'IPA',
+          teacher_name: 'Budi Santoso, S.Pd., M.Si.',
+          target_class: 'Semua',
+          academic_year: '2026/2027',
+          semester: 'Ganjil',
           duration_minutes: 45,
           max_violations: 3,
           is_active: true,
+          is_archived: false,
           created_at: new Date().toISOString()
         }
       ];
@@ -371,6 +448,17 @@
           status: 'completed',
           started_at: new Date(Date.now() - 1200000).toISOString(),
           submitted_at: new Date().toISOString()
+        }
+      ];
+
+      state.audit_logs = [
+        {
+          id: 'log-1',
+          actor: 'Sistem Inisialisasi',
+          action_type: 'INIT',
+          entity_name: 'Data Master',
+          description: 'Inisialisasi struktur kelas VII.1-IX.5 dan periode aktif 2026/2027 Ganjil.',
+          created_at: new Date().toISOString()
         }
       ];
     };
@@ -423,6 +511,29 @@
       if (backdrop) backdrop.classList.add('hidden');
     };
 
+    // Modal Konfirmasi Tindakan (Mencegah penghapusan/perubahan tidak sengaja)
+    let pendingConfirmCallback = null;
+    const openConfirmModal = ({ title, message, confirmText = 'Ya, Lanjutkan', confirmColor = 'bg-blue-600 hover:bg-blue-700', icon = 'fa-circle-question', onConfirm }) => {
+      pendingConfirmCallback = onConfirm;
+      openModal(`
+        <div class="text-center space-y-4">
+          <div class="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+            <i class="fa-solid ${icon} text-3xl"></i>
+          </div>
+          <h3 class="text-xl font-extrabold text-slate-900">${escapeHtml(title)}</h3>
+          <p class="text-sm text-slate-600 leading-relaxed">${message}</p>
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <button type="button" onclick="window.app.closeModal()" class="py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm">
+              Batal
+            </button>
+            <button type="button" onclick="window.app.executePendingConfirm()" class="py-3 rounded-xl ${confirmColor} text-white font-bold text-xs sm:text-sm shadow-md">
+              ${escapeHtml(confirmText)}
+            </button>
+          </div>
+        </div>
+      `);
+    };
+
     // Bunyi Sirine Peringatan menggunakan Web Audio API (Tanpa File Eksternal)
     const playSecurityAlarmSound = () => {
       try {
@@ -467,13 +578,22 @@
       }
 
       try {
-        const [stdRes, exmRes, qstRes, sesRes] = await Promise.all([
+        const [ayRes, clsRes, subRes, tchRes, stdRes, exmRes, qstRes, sesRes, logRes] = await Promise.all([
+          supabase.from('academic_years').select('*').order('created_at', { ascending: false }),
+          supabase.from('classes').select('*').order('level', { ascending: true }).order('class_name', { ascending: true }),
+          supabase.from('subjects').select('*').order('code', { ascending: true }),
+          supabase.from('teachers').select('*').order('name', { ascending: true }),
           supabase.from('students').select('*').order('class_name', { ascending: true }).order('name', { ascending: true }),
           supabase.from('exams').select('*').order('created_at', { ascending: false }),
           supabase.from('questions').select('*').order('order_number', { ascending: true }),
-          supabase.from('exam_sessions').select('*').order('started_at', { ascending: false })
+          supabase.from('exam_sessions').select('*').order('started_at', { ascending: false }),
+          supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(200)
         ]);
 
+        if (!ayRes.error) state.academic_years = ayRes.data || [];
+        if (!clsRes.error) state.classes = clsRes.data || [];
+        if (!subRes.error) state.subjects = subRes.data || [];
+        if (!tchRes.error) state.teachers = tchRes.data || [];
         if (stdRes.error) throw stdRes.error;
         if (exmRes.error) throw exmRes.error;
         if (qstRes.error) throw qstRes.error;
@@ -483,6 +603,7 @@
         state.exams = exmRes.data || [];
         state.questions = qstRes.data || [];
         state.exam_sessions = sesRes.data || [];
+        if (!logRes.error) state.audit_logs = logRes.data || [];
       } catch (err) {
         showToast('Gagal memuat data dari Supabase: ' + err.message, 'error');
       }
@@ -681,16 +802,6 @@
     // RENDER ANTARMUKA UTAMA
     // ============================================================================
     const renderApp = () => {
-      // Tampilkan atau sembunyikan banner Mode Preview
-      const banner = document.getElementById('preview-mode-banner');
-      if (banner) {
-        if (IS_PREVIEW) {
-          banner.classList.remove('hidden');
-        } else {
-          banner.classList.add('hidden');
-        }
-      }
-
       const container = document.getElementById('app-view-container');
       if (!container) return;
 
@@ -714,7 +825,7 @@
     };
 
     // ============================================================================
-    // 1. HALAMAN LOGIN (SISWA NISN 10 DIGIT & ADMIN SUPABASE AUTH)
+    // 1. HALAMAN LOGIN (BERSIH TANPA TOMBOL PINTAS & KREDENSIAL UJI COBA)
     // ============================================================================
     const renderLoginView = () => {
       const isStudentTab = state.loginTab === 'student';
@@ -746,10 +857,10 @@
             </div>
 
             ${isStudentTab ? `
-              <!-- Form Login Siswa (NISN 10 Digit & Password, Tanpa Token) -->
+              <!-- Form Login Siswa (NISN / Username & Password, Tanpa Token) -->
               <form onsubmit="window.app.handleStudentLogin(event)" class="space-y-4">
                 <div>
-                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">NISN Siswa (10 Digit)</label>
+                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">NISN / Username Siswa</label>
                   <div class="relative">
                     <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
                       <i class="fa-solid fa-id-card"></i>
@@ -757,18 +868,15 @@
                     <input
                       type="text"
                       id="login-student-nisn"
-                      maxlength="10"
-                      pattern="\\d{10}"
-                      inputmode="numeric"
                       required
-                      placeholder="Contoh: 0081234567"
+                      placeholder="Masukkan NISN (10 Digit) atau Username"
                       class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white/90 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold text-slate-900"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Password Ujian</label>
+                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Kata Sandi Ujian</label>
                   <div class="relative">
                     <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
                       <i class="fa-solid fa-key"></i>
@@ -777,7 +885,7 @@
                       type="password"
                       id="login-student-password"
                       required
-                      placeholder="Masukkan password dari kartu ujian"
+                      placeholder="Masukkan kata sandi"
                       class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white/90 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold text-slate-900"
                     />
                   </div>
@@ -796,10 +904,10 @@
                 </button>
               </form>
             ` : `
-              <!-- Form Login Admin (Supabase Auth Email & Password) -->
+              <!-- Form Login Admin (Email & Password) -->
               <form onsubmit="window.app.handleAdminLogin(event)" class="space-y-4">
                 <div>
-                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Email Admin (Supabase Auth)</label>
+                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Email Administrator</label>
                   <div class="relative">
                     <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
                       <i class="fa-solid fa-envelope"></i>
@@ -808,14 +916,14 @@
                       type="email"
                       id="login-admin-email"
                       required
-                      placeholder="admin@sekolah.sch.id"
+                      placeholder="Masukkan email administrator"
                       class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white/90 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold text-slate-900"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Password Admin</label>
+                  <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">Kata Sandi</label>
                   <div class="relative">
                     <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
                       <i class="fa-solid fa-lock"></i>
@@ -824,7 +932,7 @@
                       type="password"
                       id="login-admin-password"
                       required
-                      placeholder="Masukkan password admin"
+                      placeholder="Masukkan kata sandi administrator"
                       class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white/90 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold text-slate-900"
                     />
                   </div>
@@ -846,7 +954,12 @@
     // ============================================================================
     const renderStudentLobbyView = () => {
       const student = state.currentUser;
-      const activeExams = state.exams.filter((e) => e.is_active);
+      const activePeriod = getActiveAcademicYear();
+      const activeExams = state.exams.filter((e) => {
+        if (!e.is_active || e.is_archived) return false;
+        const matchClass = !e.target_class || e.target_class === 'Semua' || e.target_class === student.class_name;
+        return matchClass;
+      });
 
       return `
         <div class="min-h-screen pb-12">
@@ -859,7 +972,7 @@
                 </div>
                 <div>
                   <div class="text-sm font-extrabold text-slate-900">${escapeHtml(student.name)}</div>
-                  <div class="text-xs text-slate-500">NISN: <span class="font-mono font-semibold text-slate-700">${escapeHtml(student.nisn)}</span> • Kelas: <span class="font-semibold text-blue-600">${escapeHtml(student.class_name)}</span></div>
+                  <div class="text-xs text-slate-500">NISN: <span class="font-mono font-semibold text-slate-700">${escapeHtml(student.nisn)}</span> • Kelas: <span class="font-semibold text-blue-600">${escapeHtml(student.class_name)}</span> • TA: <span class="font-semibold">${escapeHtml(activePeriod.year_name)} (${escapeHtml(activePeriod.semester)})</span></div>
                 </div>
               </div>
               <button onclick="window.app.handleLogout()" class="px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold transition flex items-center gap-1.5">
@@ -1125,13 +1238,14 @@
     };
 
     // ============================================================================
-    // 3. ANTARMUKA PANEL ADMIN (FIXED SIDEBAR DESKTOP & FLOATING BOTTOM NAV HP)
+    // 3. ANTARMUKA PANEL ADMIN (DENGAN DATA MASTER TERPADU, TANPA MENU LAMA)
     // ============================================================================
     const renderAdminLayout = () => {
+      const activePeriod = getActiveAcademicYear();
       const menuItems = [
         { id: 'dashboard', label: 'Monitoring', icon: 'fa-chart-pie' },
-        { id: 'students', label: 'Siswa & Kartu', icon: 'fa-id-card-clip' },
-        { id: 'exams', label: 'Bank Soal', icon: 'fa-book-open-reader' },
+        { id: 'master', label: 'Data Master', icon: 'fa-database' },
+        { id: 'exams', label: 'Jadwal & Soal', icon: 'fa-book-open-reader' },
         { id: 'results', label: 'Rekap Nilai', icon: 'fa-award' }
       ];
 
@@ -1140,7 +1254,7 @@
           <!-- Fixed Sidebar (Desktop) -->
           <aside class="admin-sidebar glass-card border-r border-slate-200/80 p-5 justify-between no-print">
             <div>
-              <div class="flex items-center gap-3 px-2 mb-8">
+              <div class="flex items-center gap-3 px-2 mb-6">
                 <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold shadow-md">
                   <i class="fa-solid fa-shield-halved text-xl"></i>
                 </div>
@@ -1148,6 +1262,13 @@
                   <div class="font-extrabold text-slate-900 text-base leading-tight">Exambro Admin</div>
                   <div class="text-xs text-slate-500">CBT Control Center</div>
                 </div>
+              </div>
+
+              <!-- Info Periode Akademik Aktif -->
+              <div class="mb-6 p-3 rounded-2xl bg-blue-50/90 border border-blue-100">
+                <div class="text-[10px] font-extrabold uppercase tracking-wider text-blue-600">Periode Aktif</div>
+                <div class="text-xs font-black text-slate-900 mt-0.5">TA ${escapeHtml(activePeriod.year_name)}</div>
+                <div class="text-[11px] font-semibold text-slate-600">Semester ${escapeHtml(activePeriod.semester)}</div>
               </div>
 
               <nav class="space-y-1.5">
@@ -1210,7 +1331,7 @@
           <main class="admin-main-content p-4 sm:p-8">
             <div class="max-w-6xl mx-auto">
               ${state.adminMenu === 'dashboard' ? renderAdminDashboard() : ''}
-              ${state.adminMenu === 'students' ? renderAdminStudentsAndCards() : ''}
+              ${state.adminMenu === 'master' ? renderAdminMasterData() : ''}
               ${state.adminMenu === 'exams' ? renderAdminExamsAndQuestions() : ''}
               ${state.adminMenu === 'results' ? renderAdminResults() : ''}
             </div>
@@ -1223,78 +1344,63 @@
     // 3A. MENU ADMIN: DASHBOARD & MONITORING REAL-TIME
     // ============================================================================
     const renderAdminDashboard = () => {
-      const totalStudents = state.students.length;
-      const totalExams = state.exams.length;
-      const activeSessions = state.exam_sessions.filter((s) => s.status === 'in_progress').length;
-      const blockedSessions = state.exam_sessions.filter((s) => s.status === 'blocked').length;
+      const activeStudentsCount = state.students.filter((s) => !s.is_archived).length;
+      const activeExamsCount = state.exams.filter((e) => e.is_active && !e.is_archived).length;
+      const runningSessionsCount = state.exam_sessions.filter((s) => s.status === 'in_progress').length;
+      const blockedSessionsCount = state.exam_sessions.filter((s) => s.status === 'blocked').length;
 
       return `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 class="text-2xl font-extrabold text-slate-900">Dashboard & Monitoring Ujian</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Pantau aktivitas pengerjaan siswa dan indikator pelanggaran anti-curang secara langsung.</p>
+              <h1 class="text-2xl font-extrabold text-slate-900">Monitoring Ujian & Anti-Curang</h1>
+              <p class="text-xs sm:text-sm text-slate-500">Pantau aktivitas peserta ujian secara real-time, status pelanggaran pindah layar, dan buka kunci sesi.</p>
             </div>
-            <button onclick="window.app.refreshAllData()" class="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-sm transition flex items-center gap-2">
-              <i class="fa-solid fa-rotate"></i> Muat Ulang Data
+            <button onclick="window.app.refreshAllData()" class="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 text-xs font-bold shadow-sm transition flex items-center gap-2">
+              <i class="fa-solid fa-arrows-rotate text-blue-600"></i> Segarkan Data
             </button>
           </div>
 
           <!-- Ringkasan Statistik -->
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="glass-card rounded-3xl p-5">
-              <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center mb-3">
-                <i class="fa-solid fa-users"></i>
-              </div>
-              <div class="text-2xl font-black text-slate-900">${totalStudents}</div>
-              <div class="text-xs font-semibold text-slate-500">Total Peserta Terdaftar</div>
+              <div class="text-xs font-bold text-slate-500 uppercase">Siswa Aktif</div>
+              <div class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">${activeStudentsCount}</div>
+              <div class="text-[11px] text-blue-600 font-semibold mt-1"><i class="fa-solid fa-users mr-1"></i>Terdaftar di Data Master</div>
             </div>
-
             <div class="glass-card rounded-3xl p-5">
-              <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3">
-                <i class="fa-solid fa-file-signature"></i>
-              </div>
-              <div class="text-2xl font-black text-slate-900">${totalExams}</div>
-              <div class="text-xs font-semibold text-slate-500">Paket Ujian Aktif</div>
+              <div class="text-xs font-bold text-slate-500 uppercase">Ujian Aktif</div>
+              <div class="text-2xl sm:text-3xl font-black text-blue-600 mt-1">${activeExamsCount}</div>
+              <div class="text-[11px] text-slate-500 font-semibold mt-1"><i class="fa-solid fa-book-open mr-1"></i>Siap dikerjakan</div>
             </div>
-
             <div class="glass-card rounded-3xl p-5">
-              <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center mb-3">
-                <i class="fa-solid fa-spinner"></i>
-              </div>
-              <div class="text-2xl font-black text-slate-900">${activeSessions}</div>
-              <div class="text-xs font-semibold text-slate-500">Sedang Mengerjakan</div>
+              <div class="text-xs font-bold text-slate-500 uppercase">Sedang Ujian</div>
+              <div class="text-2xl sm:text-3xl font-black text-amber-600 mt-1">${runningSessionsCount}</div>
+              <div class="text-[11px] text-amber-700 font-semibold mt-1"><i class="fa-solid fa-mobile-screen mr-1"></i>Mode Layar Penuh</div>
             </div>
-
             <div class="glass-card rounded-3xl p-5">
-              <div class="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center mb-3">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-              </div>
-              <div class="text-2xl font-black text-red-600">${blockedSessions}</div>
-              <div class="text-xs font-semibold text-slate-500">Terkunci (Melanggar)</div>
+              <div class="text-xs font-bold text-slate-500 uppercase">Sesi Terkunci</div>
+              <div class="text-2xl sm:text-3xl font-black text-red-600 mt-1">${blockedSessionsCount}</div>
+              <div class="text-[11px] text-red-600 font-semibold mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Melanggar Batas</div>
             </div>
           </div>
 
-          <!-- Tabel Monitoring Sesi Siswa -->
-          <div class="glass-card rounded-3xl p-5 sm:p-6">
-            <h2 class="text-base font-extrabold text-slate-900 mb-4 flex items-center gap-2">
-              <i class="fa-solid fa-desktop text-blue-600"></i>
-              Status Pengerjaan & Pelanggaran Siswa
-            </h2>
+          <!-- Tabel Monitoring Sesi Peserta -->
+          <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-4">
+            <h2 class="text-base font-extrabold text-slate-900">Status Sesi Peserta Ujian (${state.exam_sessions.length} Sesi)</h2>
 
             ${state.exam_sessions.length === 0 ? `
-              <div class="text-center py-10 text-slate-400 text-sm">
-                Belum ada aktivitas pengerjaan ujian oleh siswa.
-              </div>
+              <div class="text-center py-10 text-slate-400 text-sm">Belum ada aktivitas peserta yang memulai ujian.</div>
             ` : `
               <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                   <thead>
                     <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
-                      <th class="py-3 px-3">Siswa & Kelas</th>
+                      <th class="py-3 px-3">Peserta & Kelas</th>
                       <th class="py-3 px-3">Mata Pelajaran</th>
                       <th class="py-3 px-3">Pelanggaran</th>
-                      <th class="py-3 px-3">Status</th>
+                      <th class="py-3 px-3">Status Sesi</th>
+                      <th class="py-3 px-3">Skor</th>
                       <th class="py-3 px-3 text-right">Tindakan Pengawas</th>
                     </tr>
                   </thead>
@@ -1302,35 +1408,38 @@
                     ${state.exam_sessions.map((ses) => {
                       const std = state.students.find((s) => String(s.id) === String(ses.student_id));
                       const exm = state.exams.find((e) => String(e.id) === String(ses.exam_id));
-
-                      let statusHtml = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">Mengerjakan</span>`;
-                      if (ses.status === 'completed') {
-                        statusHtml = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Selesai (${ses.score ?? 0})</span>`;
-                      } else if (ses.status === 'blocked') {
-                        statusHtml = `<span class="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">Terkunci</span>`;
-                      }
-
                       return `
                         <tr class="hover:bg-slate-50/80">
-                          <td class="py-3.5 px-3">
-                            <div class="font-bold text-slate-900">${escapeHtml(std?.name || 'Siswa Terhapus')}</div>
-                            <div class="text-xs text-slate-500">NISN: ${escapeHtml(std?.nisn || '-')} • ${escapeHtml(std?.class_name || '-')}</div>
+                          <td class="py-3 px-3">
+                            <div class="font-bold text-slate-900">${escapeHtml(std?.name || 'Siswa')}</div>
+                            <div class="text-xs text-slate-500 font-mono">${escapeHtml(std?.nisn || '-')} • Kelas ${escapeHtml(std?.class_name || '-')}</div>
                           </td>
-                          <td class="py-3.5 px-3 font-semibold text-slate-700">${escapeHtml(exm?.subject || '-')}</td>
-                          <td class="py-3.5 px-3">
-                            <span class="px-2.5 py-1 rounded-lg font-bold text-xs ${ses.violation_count > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}">
-                              ${ses.violation_count || 0} / ${exm?.max_violations || 3}x Pindah Layar
+                          <td class="py-3 px-3 font-semibold text-slate-700">${escapeHtml(exm?.subject || '-')}</td>
+                          <td class="py-3 px-3">
+                            <span class="px-2.5 py-1 rounded-lg font-extrabold text-xs ${(ses.violation_count || 0) > 0 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}">
+                              ${ses.violation_count || 0} / ${exm?.max_violations || 3}
                             </span>
                           </td>
-                          <td class="py-3.5 px-3">${statusHtml}</td>
-                          <td class="py-3.5 px-3 text-right space-x-1">
+                          <td class="py-3 px-3">
+                            <span class="px-2.5 py-1 rounded-full text-xs font-bold ${
+                              ses.status === 'completed'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : ses.status === 'blocked'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-amber-100 text-amber-800'
+                            }">
+                              ${ses.status === 'completed' ? 'Selesai' : ses.status === 'blocked' ? 'Terkunci' : 'Mengerjakan'}
+                            </span>
+                          </td>
+                          <td class="py-3 px-3 font-black text-blue-600">${ses.score ?? '-'}</td>
+                          <td class="py-3 px-3 text-right space-x-1">
                             ${ses.status === 'blocked' ? `
-                              <button onclick="window.app.unlockStudentSession('${ses.id}')" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs transition">
+                              <button onclick="window.app.unlockStudentSession('${ses.id}')" class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm">
                                 <i class="fa-solid fa-unlock mr-1"></i> Buka Kunci
                               </button>
                             ` : ''}
-                            <button onclick="window.app.deleteExamSession('${ses.id}')" class="px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs transition" title="Reset Sesi">
-                              <i class="fa-solid fa-trash-can"></i> Reset
+                            <button onclick="window.app.deleteExamSession('${ses.id}')" class="px-2.5 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs" title="Reset Sesi">
+                              <i class="fa-solid fa-rotate-left"></i> Reset
                             </button>
                           </td>
                         </tr>
@@ -1346,149 +1455,661 @@
     };
 
     // ============================================================================
-    // 3B. MENU ADMIN: MANAJEMEN SISWA & CETAK KARTU UJIAN
+    // 3B. MENU ADMIN: DATA MASTER TERPADU (6 SUB-MENU UTAMA + RIWAYAT PERUBAHAN)
     // ============================================================================
-    const renderAdminStudentsAndCards = () => {
-      const classes = ['ALL', ...new Set(state.students.map((s) => s.class_name).filter(Boolean))];
-      const filteredStudents = state.cardClassFilter === 'ALL'
-        ? state.students
-        : state.students.filter((s) => s.class_name === state.cardClassFilter);
+    const renderAdminMasterData = () => {
+      const masterTabs = [
+        { id: 'students', label: 'Data Siswa', icon: 'fa-user-graduate', count: state.students.filter(s => !s.is_archived).length },
+        { id: 'classes', label: 'Data Kelas', icon: 'fa-chalkboard-user', count: state.classes.filter(c => !c.is_archived).length },
+        { id: 'subjects', label: 'Mata Pelajaran', icon: 'fa-book', count: state.subjects.filter(s => !s.is_archived).length },
+        { id: 'teachers', label: 'Guru / Pengampu', icon: 'fa-person-chalkboard', count: state.teachers.filter(t => !t.is_archived).length },
+        { id: 'periods', label: 'Tahun Ajaran & Semester', icon: 'fa-calendar-check', count: state.academic_years.length },
+        { id: 'accounts', label: 'Pengaturan Peserta & Akun', icon: 'fa-user-shield', count: state.students.filter(s => !s.is_archived).length },
+        { id: 'logs', label: 'Riwayat Perubahan', icon: 'fa-clock-rotate-left', count: state.audit_logs.length }
+      ];
 
       return `
         <div class="space-y-6">
-          <!-- Header & Tombol Aksi -->
+          <!-- Header Data Master -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 no-print">
             <div>
-              <h1 class="text-2xl font-extrabold text-slate-900">Data Siswa & Cetak Kartu Ujian</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Kelola akun login NISN (10 digit) & password siswa serta cetak kartu peserta siap bagi.</p>
+              <h1 class="text-2xl font-extrabold text-slate-900">Pusat Data Master Sekolah</h1>
+              <p class="text-xs sm:text-sm text-slate-500">Kelola seluruh referensi utama: Siswa, Kelas (VII–IX), Mata Pelajaran, Guru Pengampu, Periode Akademik, Akun Ujian, dan Audit Log.</p>
+            </div>
+          </div>
+
+          <!-- Navigasi Sub-Tab Data Master -->
+          <div class="flex overflow-x-auto gap-2 pb-1 no-print">
+            ${masterTabs.map((t) => {
+              const isAct = state.masterTab === t.id;
+              return `
+                <button
+                  onclick="window.app.switchMasterTab('${t.id}')"
+                  class="shrink-0 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition flex items-center gap-2 border ${
+                    isAct
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-md'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }"
+                >
+                  <i class="fa-solid ${t.icon}"></i>
+                  <span>${t.label}</span>
+                  <span class="px-1.5 py-0.5 rounded-full text-[10px] ${isAct ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}">${t.count}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+
+          <!-- Isi Sub-Tab Aktif -->
+          <div>
+            ${state.masterTab === 'students' ? renderMasterStudentsTab() : ''}
+            ${state.masterTab === 'classes' ? renderMasterClassesTab() : ''}
+            ${state.masterTab === 'subjects' ? renderMasterSubjectsTab() : ''}
+            ${state.masterTab === 'teachers' ? renderMasterTeachersTab() : ''}
+            ${state.masterTab === 'periods' ? renderMasterPeriodsTab() : ''}
+            ${state.masterTab === 'accounts' ? renderMasterAccountsTab() : ''}
+            ${state.masterTab === 'logs' ? renderMasterAuditLogsTab() : ''}
+          </div>
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 1: DATA SISWA (Tambah, Edit, Arsip, Pencarian, Filter, Impor, Aktivasi Massal)
+    // ----------------------------------------------------------------------------
+    const renderMasterStudentsTab = () => {
+      const activeClasses = state.classes.filter((c) => !c.is_archived);
+      const classNames = ['ALL', ...new Set(activeClasses.map((c) => c.class_name))];
+
+      const filtered = state.students.filter((s) => {
+        if (state.studentStatusFilter === 'ACTIVE' && s.is_archived) return false;
+        if (state.studentStatusFilter === 'ARCHIVED' && !s.is_archived) return false;
+        if (state.studentClassFilter !== 'ALL' && s.class_name !== state.studentClassFilter) return false;
+        if (state.studentSearch) {
+          const q = state.studentSearch.toLowerCase();
+          const matchName = (s.name || '').toLowerCase().includes(q);
+          const matchNisn = (s.nisn || '').toLowerCase().includes(q);
+          const matchUser = (s.username || '').toLowerCase().includes(q);
+          if (!matchName && !matchNisn && !matchUser) return false;
+        }
+        return true;
+      });
+
+      return `
+        <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900">Data Identitas Siswa</h2>
+              <p class="text-xs text-slate-500">Menyimpan NISN, Nama Lengkap, Jenis Kelamin, Kelas, dan ID Login. Data yang diarsipkan tetap tersimpan pada riwayat ujian.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <button onclick="window.app.openStudentFormModal()" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md transition flex items-center gap-2">
+              <button onclick="window.app.openStudentFormModal()" class="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-2">
                 <i class="fa-solid fa-user-plus"></i> Tambah Siswa
               </button>
-              <button onclick="window.print()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md transition flex items-center gap-2">
-                <i class="fa-solid fa-print"></i> Cetak / Ekspor PDF Kartu
+              <button onclick="window.app.openStudentBulkImportModal()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-2">
+                <i class="fa-solid fa-file-import"></i> Impor Massal (Excel/CSV)
+              </button>
+              <button onclick="window.app.bulkActivateStudents(true)" class="px-3.5 py-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-bolt"></i> Aktivasi Massal
               </button>
             </div>
           </div>
 
-          <!-- Filter Kelas & Tabel Data Siswa -->
-          <div class="glass-card rounded-3xl p-5 sm:p-6 no-print">
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h2 class="text-base font-extrabold text-slate-900">Daftar Akun Peserta Ujian (${filteredStudents.length} Siswa)</h2>
-              <div class="flex items-center gap-2">
-                <label class="text-xs font-bold text-slate-500">Filter Kelas:</label>
-                <select onchange="window.app.setCardClassFilter(this.value)" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-800">
-                  ${classes.map((c) => `<option value="${escapeHtml(c)}" ${state.cardClassFilter === c ? 'selected' : ''}>${c === 'ALL' ? 'Semua Kelas' : escapeHtml(c)}</option>`).join('')}
-                </select>
+          <!-- Baris Pencarian & Filter -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+              <input
+                type="text"
+                value="${escapeHtml(state.studentSearch)}"
+                oninput="window.app.setMasterFilter('studentSearch', this.value)"
+                placeholder="Cari Nama, NISN, atau Username..."
+                class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold"
+              />
+            </div>
+
+            <select onchange="window.app.setMasterFilter('studentClassFilter', this.value)" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+              ${classNames.map((c) => `<option value="${escapeHtml(c)}" ${state.studentClassFilter === c ? 'selected' : ''}>${c === 'ALL' ? 'Semua Rombel Kelas' : 'Kelas ' + escapeHtml(c)}</option>`).join('')}
+            </select>
+
+            <select onchange="window.app.setMasterFilter('studentStatusFilter', this.value)" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+              <option value="ACTIVE" ${state.studentStatusFilter === 'ACTIVE' ? 'selected' : ''}>Status: Siswa Aktif</option>
+              <option value="ARCHIVED" ${state.studentStatusFilter === 'ARCHIVED' ? 'selected' : ''}>Status: Diarsipkan (Nonaktif)</option>
+              <option value="ALL" ${state.studentStatusFilter === 'ALL' ? 'selected' : ''}>Semua Status</option>
+            </select>
+          </div>
+
+          <!-- Tabel Data Siswa -->
+          ${filtered.length === 0 ? `
+            <div class="text-center py-10 text-slate-400 text-sm">Tidak ada data siswa yang cocok dengan filter pencarian.</div>
+          ` : `
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
+                    <th class="py-3 px-3">NISN</th>
+                    <th class="py-3 px-3">Nama Lengkap</th>
+                    <th class="py-3 px-3">L/P</th>
+                    <th class="py-3 px-3">Kelas</th>
+                    <th class="py-3 px-3">Username Login</th>
+                    <th class="py-3 px-3">Status Akun</th>
+                    <th class="py-3 px-3 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200/60 text-xs sm:text-sm">
+                  ${filtered.map((s) => `
+                    <tr class="hover:bg-slate-50/80 ${s.is_archived ? 'opacity-60 bg-slate-50' : ''}">
+                      <td class="py-3 px-3 font-mono font-bold text-blue-600">${escapeHtml(s.nisn)}</td>
+                      <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(s.name)}</td>
+                      <td class="py-3 px-3 font-bold text-slate-700">${escapeHtml(s.gender || 'L')}</td>
+                      <td class="py-3 px-3"><span class="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs">${escapeHtml(s.class_name)}</span></td>
+                      <td class="py-3 px-3 font-mono text-xs text-slate-700">${escapeHtml(s.username || s.nisn)}</td>
+                      <td class="py-3 px-3">
+                        ${s.is_archived
+                          ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-200 text-slate-700">Diarsipkan</span>`
+                          : s.can_take_exam !== false
+                          ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Aktif Ujian</span>`
+                          : `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-100 text-red-700">Dinonaktifkan</span>`
+                        }
+                      </td>
+                      <td class="py-3 px-3 text-right space-x-1">
+                        <button onclick="window.app.openStudentFormModal('${s.id}')" class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs" title="Edit Siswa">
+                          <i class="fa-solid fa-pen"></i>
+                        </button>
+                        ${!s.is_archived ? `
+                          <button onclick="window.app.toggleArchiveStudent('${s.id}', true)" class="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-xs" title="Arsipkan Siswa">
+                            <i class="fa-solid fa-box-archive"></i> Arsip
+                          </button>
+                        ` : `
+                          <button onclick="window.app.toggleArchiveStudent('${s.id}', false)" class="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs" title="Pulihkan dari Arsip">
+                            <i class="fa-solid fa-rotate-left"></i> Pulihkan
+                          </button>
+                        `}
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 2: DATA KELAS (Tingkat VII, VIII, IX & Rombel VII.1-IX.5)
+    // ----------------------------------------------------------------------------
+    const renderMasterClassesTab = () => {
+      const filteredClasses = state.classes.filter((c) => {
+        if (c.is_archived) return false;
+        if (state.classLevelFilter !== 'ALL' && c.level !== state.classLevelFilter) return false;
+        if (state.classPeriodFilter !== 'ALL' && c.academic_year !== state.classPeriodFilter) return false;
+        return true;
+      });
+
+      return `
+        <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900">Data Kelas & Rombongan Belajar</h2>
+              <p class="text-xs text-slate-500">Mengelompokkan siswa berdasarkan Tingkat (VII, VIII, IX) dan Tahun Ajaran.</p>
+            </div>
+            <button onclick="window.app.openClassFormModal()" class="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-2">
+              <i class="fa-solid fa-plus"></i> Tambah Kelas Baru
+            </button>
+          </div>
+
+          <!-- Filter Tingkat & Tahun Ajaran -->
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
+              ${['ALL', 'VII', 'VIII', 'IX'].map((lvl) => `
+                <button
+                  onclick="window.app.setMasterFilter('classLevelFilter', '${lvl}')"
+                  class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition ${
+                    state.classLevelFilter === lvl ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }"
+                >
+                  ${lvl === 'ALL' ? 'Semua Tingkat' : 'Tingkat ' + lvl}
+                </button>
+              `).join('')}
+            </div>
+
+            <select onchange="window.app.setMasterFilter('classPeriodFilter', this.value)" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+              <option value="ALL">Semua Tahun Ajaran</option>
+              ${[...new Set(state.academic_years.map((a) => a.year_name))].map((yr) => `
+                <option value="${escapeHtml(yr)}" ${state.classPeriodFilter === yr ? 'selected' : ''}>Tahun Ajaran ${escapeHtml(yr)}</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <!-- Grid Kelas & Jumlah Siswa -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            ${filteredClasses.map((cls) => {
+              const studentCount = state.students.filter((s) => !s.is_archived && s.class_name === cls.class_name).length;
+              return `
+                <div class="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col justify-between gap-3 hover:border-blue-300 transition shadow-sm">
+                  <div class="flex items-start justify-between">
+                    <div>
+                      <span class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 text-[10px] font-extrabold uppercase">Tingkat ${escapeHtml(cls.level)}</span>
+                      <h3 class="text-xl font-black text-slate-900 mt-1">Kelas ${escapeHtml(cls.class_name)}</h3>
+                      <div class="text-xs text-slate-500">TA: ${escapeHtml(cls.academic_year || '2026/2027')}</div>
+                    </div>
+                    <div class="flex gap-1">
+                      <button onclick="window.app.openClassFormModal('${cls.id}')" class="p-2 rounded-xl bg-slate-100 hover:bg-blue-50 text-blue-600 text-xs" title="Ubah Nama / Edit Kelas">
+                        <i class="fa-solid fa-pen"></i>
+                      </button>
+                      <button onclick="window.app.archiveClassItem('${cls.id}')" class="p-2 rounded-xl bg-slate-100 hover:bg-amber-50 text-amber-600 text-xs" title="Arsipkan Kelas">
+                        <i class="fa-solid fa-box-archive"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span class="text-slate-500 font-semibold">Jumlah Peserta:</span>
+                    <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-extrabold">${studentCount} Siswa</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 3: DATA MATA PELAJARAN
+    // ----------------------------------------------------------------------------
+    const renderMasterSubjectsTab = () => {
+      const filtered = state.subjects.filter((sub) => {
+        if (sub.is_archived) return false;
+        if (state.subjectLevelFilter !== 'ALL' && sub.level !== 'Semua' && sub.level !== state.subjectLevelFilter) return false;
+        if (state.subjectSearch) {
+          const q = state.subjectSearch.toLowerCase();
+          if (!(sub.name || '').toLowerCase().includes(q) && !(sub.code || '').toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+
+      return `
+        <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900">Data Mata Pelajaran</h2>
+              <p class="text-xs text-slate-500">Referensi mata pelajaran resmi untuk pembuatan jadwal ujian dan pengaitan guru pengampu.</p>
+            </div>
+            <button onclick="window.app.openSubjectFormModal()" class="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-2">
+              <i class="fa-solid fa-plus"></i> Tambah Mata Pelajaran
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+              <input
+                type="text"
+                value="${escapeHtml(state.subjectSearch)}"
+                oninput="window.app.setMasterFilter('subjectSearch', this.value)"
+                placeholder="Cari Kode atau Nama Mata Pelajaran..."
+                class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold"
+              />
+            </div>
+            <select onchange="window.app.setMasterFilter('subjectLevelFilter', this.value)" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+              <option value="ALL">Semua Tingkat Kelas</option>
+              <option value="VII" ${state.subjectLevelFilter === 'VII' ? 'selected' : ''}>Tingkat VII</option>
+              <option value="VIII" ${state.subjectLevelFilter === 'VIII' ? 'selected' : ''}>Tingkat VIII</option>
+              <option value="IX" ${state.subjectLevelFilter === 'IX' ? 'selected' : ''}>Tingkat IX</option>
+            </select>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
+                  <th class="py-3 px-3">Kode Mapel</th>
+                  <th class="py-3 px-3">Nama Mata Pelajaran</th>
+                  <th class="py-3 px-3">Tingkat Kelas Relevan</th>
+                  <th class="py-3 px-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200/60 text-xs sm:text-sm">
+                ${filtered.map((sub) => `
+                  <tr class="hover:bg-slate-50/80">
+                    <td class="py-3 px-3 font-mono font-extrabold text-blue-600">${escapeHtml(sub.code)}</td>
+                    <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(sub.name)}</td>
+                    <td class="py-3 px-3"><span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-xs">Tingkat: ${escapeHtml(sub.level)}</span></td>
+                    <td class="py-3 px-3 text-right space-x-1">
+                      <button onclick="window.app.openSubjectFormModal('${sub.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs">
+                        <i class="fa-solid fa-pen mr-1"></i> Edit
+                      </button>
+                      <button onclick="window.app.archiveSubjectItem('${sub.id}')" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-xs">
+                        <i class="fa-solid fa-box-archive"></i> Arsip
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 4: DATA GURU / PENGAMPU
+    // ----------------------------------------------------------------------------
+    const renderMasterTeachersTab = () => {
+      const filtered = state.teachers.filter((t) => {
+        if (t.is_archived) return false;
+        if (state.teacherSearch) {
+          const q = state.teacherSearch.toLowerCase();
+          if (!(t.name || '').toLowerCase().includes(q) && !(t.nip || '').toLowerCase().includes(q) && !(t.subject_name || '').toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+
+      return `
+        <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900">Data Guru / Pengampu Mata Pelajaran</h2>
+              <p class="text-xs text-slate-500">Menyimpan data guru penanggung jawab mata pelajaran atau pengawas ujian (dikelola terpusat oleh Admin).</p>
+            </div>
+            <button onclick="window.app.openTeacherFormModal()" class="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-2">
+              <i class="fa-solid fa-user-plus"></i> Tambah Guru Pengampu
+            </button>
+          </div>
+
+          <div class="relative max-w-md">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+            <input
+              type="text"
+              value="${escapeHtml(state.teacherSearch)}"
+              oninput="window.app.setMasterFilter('teacherSearch', this.value)"
+              placeholder="Cari Nama Guru, NIP, atau Mata Pelajaran..."
+              class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold"
+            />
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
+                  <th class="py-3 px-3">NIP (Opsional)</th>
+                  <th class="py-3 px-3">Nama Lengkap Guru</th>
+                  <th class="py-3 px-3">Mata Pelajaran Diampu</th>
+                  <th class="py-3 px-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200/60 text-xs sm:text-sm">
+                ${filtered.map((t) => `
+                  <tr class="hover:bg-slate-50/80">
+                    <td class="py-3 px-3 font-mono text-xs text-slate-600">${escapeHtml(t.nip || '-')}</td>
+                    <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(t.name)}</td>
+                    <td class="py-3 px-3">
+                      <span class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-xs">
+                        ${escapeHtml(t.subject_code ? `[${t.subject_code}] ` : '')}${escapeHtml(t.subject_name)}
+                      </span>
+                    </td>
+                    <td class="py-3 px-3 text-right space-x-1">
+                      <button onclick="window.app.openTeacherFormModal('${t.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs">
+                        <i class="fa-solid fa-pen mr-1"></i> Edit
+                      </button>
+                      <button onclick="window.app.archiveTeacherItem('${t.id}')" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-xs">
+                        <i class="fa-solid fa-box-archive"></i> Arsip
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 5: TAHUN AJARAN DAN SEMESTER
+    // ----------------------------------------------------------------------------
+    const renderMasterPeriodsTab = () => {
+      return `
+        <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+            <div>
+              <h2 class="text-lg font-extrabold text-slate-900">Tahun Ajaran & Semester</h2>
+              <p class="text-xs text-slate-500">Menentukan periode aktif berlakunya data kelas dan ujian serta menyimpan arsip tahun sebelumnya tanpa mencampur data baru.</p>
+            </div>
+            <button onclick="window.app.openPeriodFormModal()" class="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-2">
+              <i class="fa-solid fa-calendar-plus"></i> Tambah Periode Akademik
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${state.academic_years.map((ay) => {
+              const examCount = state.exams.filter((e) => e.academic_year === ay.year_name && e.semester === ay.semester).length;
+              return `
+                <div class="rounded-2xl border-2 p-5 flex items-center justify-between gap-4 ${ay.is_active ? 'border-blue-600 bg-blue-50/40' : 'border-slate-200 bg-white'}">
+                  <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                      <span class="text-lg font-black text-slate-900">TA ${escapeHtml(ay.year_name)}</span>
+                      <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold ${ay.is_active ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'}">
+                        ${ay.is_active ? 'PERIODE AKTIF' : 'Arsip Periode'}
+                      </span>
+                    </div>
+                    <div class="text-xs font-bold text-slate-600">Semester: <span class="text-blue-700">${escapeHtml(ay.semester)}</span> • Total Paket Ujian: <strong>${examCount}</strong></div>
+                  </div>
+                  <div>
+                    ${!ay.is_active ? `
+                      <button onclick="window.app.setActiveAcademicYear('${ay.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition">
+                        Jadikan Aktif
+                      </button>
+                    ` : `
+                      <span class="text-xs font-extrabold text-emerald-700 flex items-center gap-1">
+                        <i class="fa-solid fa-circle-check"></i> Sedang Digunakan
+                      </span>
+                    `}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 6: PENGATURAN PESERTA & AKUN (Sandi Tersembunyi, Reset Akses, Cetak/Ekspor)
+    // ----------------------------------------------------------------------------
+    const renderMasterAccountsTab = () => {
+      const activeStudents = state.students.filter((s) => !s.is_archived);
+      const classes = ['ALL', ...new Set(activeStudents.map((s) => s.class_name).filter(Boolean))];
+
+      const filtered = activeStudents.filter((s) => {
+        if (state.accountClassFilter !== 'ALL' && s.class_name !== state.accountClassFilter) return false;
+        if (state.accountSearch) {
+          const q = state.accountSearch.toLowerCase();
+          if (!(s.name || '').toLowerCase().includes(q) && !(s.username || '').toLowerCase().includes(q) && !(s.exam_number || '').toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+
+      return `
+        <div class="space-y-6">
+          <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-5 no-print">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <h2 class="text-lg font-extrabold text-slate-900">Pengaturan Peserta & Akun Ujian</h2>
+                <p class="text-xs text-slate-500">Kelola Nomor Ujian, Username, Reset Kata Sandi (tersimpan terenkripsi/tersembunyi), Status Izin Mengikuti Ujian, Ekspor Akun, & Cetak Kartu.</p>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button onclick="window.app.exportAccountsToExcel()" class="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+                  <i class="fa-solid fa-file-excel"></i> Ekspor Daftar Akun
+                </button>
+                <button onclick="window.app.togglePrintCardsView()" class="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+                  <i class="fa-solid fa-id-card"></i> ${state.showPrintCardsPreview ? 'Sembunyikan Kartu' : 'Pratinjau & Cetak Kartu Ujian'}
+                </button>
               </div>
             </div>
 
-            ${filteredStudents.length === 0 ? `
-              <div class="text-center py-8 text-slate-400 text-sm">Belum ada data siswa. Silakan tambahkan siswa baru.</div>
-            ` : `
-              <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                  <thead>
-                    <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
-                      <th class="py-3 px-3">NISN (10 Digit)</th>
-                      <th class="py-3 px-3">Nama Lengkap Siswa</th>
-                      <th class="py-3 px-3">Kelas</th>
-                      <th class="py-3 px-3">Password Login</th>
-                      <th class="py-3 px-3 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-200/60 text-xs sm:text-sm">
-                    ${filteredStudents.map((s) => `
+            <!-- Filter & Pencarian Akun -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+                <input
+                  type="text"
+                  value="${escapeHtml(state.accountSearch)}"
+                  oninput="window.app.setMasterFilter('accountSearch', this.value)"
+                  placeholder="Cari Nomor Ujian, Username, atau Nama Siswa..."
+                  class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold"
+                />
+              </div>
+              <select onchange="window.app.setMasterFilter('accountClassFilter', this.value)" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-700">
+                ${classes.map((c) => `<option value="${escapeHtml(c)}" ${state.accountClassFilter === c ? 'selected' : ''}>${c === 'ALL' ? 'Semua Kelas' : 'Kelas ' + escapeHtml(c)}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- Tabel Pengaturan Akun (Password Tersembunyi / Masked) -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
+                    <th class="py-3 px-3">Nomor Ujian</th>
+                    <th class="py-3 px-3">Nama Peserta & Kelas</th>
+                    <th class="py-3 px-3">Username Login</th>
+                    <th class="py-3 px-3">Kata Sandi</th>
+                    <th class="py-3 px-3">Izin Ikut Ujian</th>
+                    <th class="py-3 px-3 text-right">Pengaturan Akses</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200/60 text-xs sm:text-sm">
+                  ${filtered.map((s, idx) => {
+                    const examNo = s.exam_number || `UJ-${String(idx + 1).padStart(3, '0')}`;
+                    const allowed = s.can_take_exam !== false;
+                    return `
                       <tr class="hover:bg-slate-50/80">
-                        <td class="py-3 px-3 font-mono font-bold text-blue-600">${escapeHtml(s.nisn)}</td>
-                        <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(s.name)}</td>
-                        <td class="py-3 px-3 font-semibold text-slate-600">${escapeHtml(s.class_name)}</td>
+                        <td class="py-3 px-3 font-mono font-bold text-slate-800">${escapeHtml(examNo)}</td>
                         <td class="py-3 px-3">
-                          <code class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 font-mono font-bold text-xs">${escapeHtml(s.password)}</code>
+                          <div class="font-bold text-slate-900">${escapeHtml(s.name)}</div>
+                          <div class="text-xs text-slate-500">Kelas ${escapeHtml(s.class_name)}</div>
+                        </td>
+                        <td class="py-3 px-3 font-mono font-bold text-blue-600">${escapeHtml(s.username || s.nisn)}</td>
+                        <td class="py-3 px-3">
+                          <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-mono text-xs select-none" title="Kata sandi disembunyikan demi keamanan">
+                            <i class="fa-solid fa-lock text-[10px] mr-1 text-slate-400"></i>${maskPasswordDisplay()}
+                          </span>
+                        </td>
+                        <td class="py-3 px-3">
+                          <button
+                            onclick="window.app.toggleStudentExamPermission('${s.id}')"
+                            class="px-3 py-1 rounded-full text-xs font-extrabold transition ${
+                              allowed
+                                ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                : 'bg-red-100 text-red-700 hover:bg-red-200'
+                            }"
+                          >
+                            <i class="fa-solid ${allowed ? 'fa-check-circle' : 'fa-ban'} mr-1"></i>
+                            ${allowed ? 'Diizinkan' : 'Diblokir'}
+                          </button>
                         </td>
                         <td class="py-3 px-3 text-right space-x-1">
-                          <button onclick="window.app.openStudentFormModal('${s.id}')" class="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs">
-                            <i class="fa-solid fa-pen"></i>
-                          </button>
-                          <button onclick="window.app.deleteStudent('${s.id}')" class="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs">
-                            <i class="fa-solid fa-trash"></i>
+                          <button onclick="window.app.openResetPasswordModal('${s.id}')" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs">
+                            <i class="fa-solid fa-key mr-1"></i> Reset Sandi
                           </button>
                         </td>
                       </tr>
-                    `).join('')}
-                  </tbody>
-                </table>
-              </div>
-            `}
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <!-- Pratinjau & Area Cetak Kartu Ujian Siswa -->
-          <div class="space-y-3">
-            <div class="flex items-center justify-between no-print px-1">
-              <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-500">
-                <i class="fa-solid fa-id-card mr-1.5 text-blue-600"></i> Pratinjau Cetak Kartu Ujian (Otomatis Siap Cetak A4)
-              </h3>
-              <span class="text-xs text-slate-500">Klik tombol <strong>Cetak / Ekspor PDF Kartu</strong> di atas untuk mencetak</span>
-            </div>
-
-            <div id="print-area-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              ${filteredStudents.map((s) => `
-                <div class="exam-card-item bg-white rounded-2xl border-2 border-slate-800 p-4 shadow-sm relative overflow-hidden">
-                  <!-- Kop Kartu Ujian -->
-                  <div class="flex items-center justify-between border-b-2 border-slate-800 pb-2.5 mb-3">
-                    <div class="flex items-center gap-2.5">
-                      <div class="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center font-extrabold text-sm">
-                        CBT
-                      </div>
-                      <div>
-                        <div class="text-xs font-black uppercase tracking-wide text-slate-900">KARTU PESERTA UJIAN SEKOLAH</div>
-                        <div class="text-[10px] font-semibold text-slate-600">Sistem Ujian Online Berbasis Smartphone (Exambro)</div>
-                      </div>
-                    </div>
-                    <div class="text-right">
-                      <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-bold">TANPA TOKEN</span>
-                    </div>
-                  </div>
-
-                  <!-- Isi Data Kartu -->
-                  <div class="grid grid-cols-3 gap-3 items-center">
-                    <div class="col-span-2 space-y-1.5 text-xs">
-                      <div class="flex">
-                        <span class="w-20 text-slate-500 font-semibold">Nama Siswa</span>
-                        <span class="font-extrabold text-slate-900">: ${escapeHtml(s.name)}</span>
-                      </div>
-                      <div class="flex">
-                        <span class="w-20 text-slate-500 font-semibold">Kelas</span>
-                        <span class="font-bold text-slate-800">: ${escapeHtml(s.class_name)}</span>
-                      </div>
-                      <div class="flex items-center">
-                        <span class="w-20 text-slate-500 font-semibold">NISN Login</span>
-                        <span class="font-mono font-black text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">: ${escapeHtml(s.nisn)}</span>
-                      </div>
-                      <div class="flex items-center">
-                        <span class="w-20 text-slate-500 font-semibold">Password</span>
-                        <span class="font-mono font-black text-slate-900 bg-amber-100 px-1.5 py-0.5 rounded">: ${escapeHtml(s.password)}</span>
-                      </div>
-                    </div>
-
-                    <!-- Barcode / QR Visual SVG -->
-                    <div class="flex flex-col items-center justify-center border border-slate-200 rounded-xl p-2 bg-slate-50 text-center">
-                      <svg class="w-14 h-14 text-slate-800" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h1v2h-1v-2zm-3 0h2v3h-2v-3zm2 3h2v3h-2v-3zm-2 2h1v1h-1v-1zm3 0h1v1h-1v-1z"/>
-                      </svg>
-                      <span class="text-[9px] font-mono text-slate-500 mt-1">${escapeHtml(s.nisn)}</span>
-                    </div>
-                  </div>
-
-                  <div class="mt-3 pt-2 border-t border-dashed border-slate-300 flex items-center justify-between text-[10px] text-slate-500">
-                    <span>* Simpan kartu ini selama ujian berlangsung</span>
-                    <span class="font-bold text-slate-700">Panitia Ujian Sekolah</span>
-                  </div>
+          <!-- Area Pratinjau Cetak Kartu Ujian (Muncul saat diaktifkan atau saat Print) -->
+          ${state.showPrintCardsPreview ? `
+            <div class="space-y-3">
+              <div class="flex items-center justify-between no-print bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                <div>
+                  <h3 class="text-sm font-extrabold text-blue-950"><i class="fa-solid fa-print mr-1.5 text-blue-600"></i> Mode Cetak Kartu Ujian Peserta (${filtered.length} Kartu)</h3>
+                  <p class="text-xs text-blue-800">Kartu ujian otomatis diformat rapi untuk kertas A4.</p>
                 </div>
-              `).join('')}
+                <button onclick="window.print()" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-md">
+                  <i class="fa-solid fa-print mr-1.5"></i> Cetak Sekarang / Simpan PDF
+                </button>
+              </div>
+
+              <div id="print-area-cards" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${filtered.map((s, idx) => {
+                  const examNo = s.exam_number || `UJ-${String(idx + 1).padStart(3, '0')}`;
+                  return `
+                    <div class="exam-card-item bg-white rounded-2xl border-2 border-slate-800 p-4 shadow-sm">
+                      <div class="flex items-center justify-between border-b-2 border-slate-800 pb-2.5 mb-3">
+                        <div class="flex items-center gap-2.5">
+                          <div class="w-10 h-10 rounded-xl bg-blue-700 text-white flex items-center justify-center font-extrabold text-sm">CBT</div>
+                          <div>
+                            <div class="text-xs font-black uppercase tracking-wide text-slate-900">KARTU PESERTA UJIAN SEKOLAH</div>
+                            <div class="text-[10px] font-semibold text-slate-600">TA ${escapeHtml(getActiveAcademicYear().year_name)} • Semester ${escapeHtml(getActiveAcademicYear().semester)}</div>
+                          </div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded bg-slate-900 text-white text-[10px] font-mono font-bold">${escapeHtml(examNo)}</span>
+                      </div>
+                      <div class="grid grid-cols-3 gap-3 items-center text-xs">
+                        <div class="col-span-2 space-y-1.5">
+                          <div class="flex"><span class="w-24 text-slate-500 font-semibold">Nama Peserta</span><span class="font-extrabold text-slate-900">: ${escapeHtml(s.name)}</span></div>
+                          <div class="flex"><span class="w-24 text-slate-500 font-semibold">Kelas / L-P</span><span class="font-bold text-slate-800">: ${escapeHtml(s.class_name)} (${escapeHtml(s.gender || 'L')})</span></div>
+                          <div class="flex"><span class="w-24 text-slate-500 font-semibold">Username/NISN</span><span class="font-mono font-black text-blue-700">: ${escapeHtml(s.username || s.nisn)}</span></div>
+                          <div class="flex"><span class="w-24 text-slate-500 font-semibold">Status Akses</span><span class="font-bold text-emerald-700">: ${s.can_take_exam !== false ? 'Aktif (Terverifikasi)' : 'Nonaktif'}</span></div>
+                        </div>
+                        <div class="flex flex-col items-center justify-center border border-slate-200 rounded-xl p-2 bg-slate-50">
+                          <svg class="w-14 h-14 text-slate-800" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h1v2h-1v-2zm-3 0h2v3h-2v-3zm2 3h2v3h-2v-3zm-2 2h1v1h-1v-1zm3 0h1v1h-1v-1z"/>
+                          </svg>
+                          <span class="text-[9px] font-mono text-slate-500 mt-1">${escapeHtml(s.nisn)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
             </div>
+          ` : ''}
+        </div>
+      `;
+    };
+
+    // ----------------------------------------------------------------------------
+    // SUB-TAB 7: RIWAYAT PERUBAHAN (AUDIT LOG DATA MASTER)
+    // ----------------------------------------------------------------------------
+    const renderMasterAuditLogsTab = () => {
+      return `
+        <div class="glass-card rounded-3xl p-5 sm:p-6 space-y-4">
+          <div class="border-b border-slate-200 pb-3">
+            <h2 class="text-lg font-extrabold text-slate-900">Riwayat Perubahan Data (Audit Log)</h2>
+            <p class="text-xs text-slate-500">Mencatat siapa yang mengubah data, jenis tindakan, dan waktu perubahan secara kronologis.</p>
           </div>
+
+          ${state.audit_logs.length === 0 ? `
+            <div class="text-center py-8 text-slate-400 text-sm">Belum ada riwayat perubahan yang tercatat.</div>
+          ` : `
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-200 text-[11px] font-extrabold uppercase text-slate-500">
+                    <th class="py-3 px-3">Waktu Perubahan</th>
+                    <th class="py-3 px-3">Pelaku / Admin</th>
+                    <th class="py-3 px-3">Modul</th>
+                    <th class="py-3 px-3">Rincian Aktivitas</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200/60 text-xs sm:text-sm">
+                  ${state.audit_logs.map((log) => `
+                    <tr class="hover:bg-slate-50/80">
+                      <td class="py-3 px-3 font-mono text-xs text-slate-500">${new Date(log.created_at).toLocaleString('id-ID')}</td>
+                      <td class="py-3 px-3 font-bold text-slate-800">${escapeHtml(log.actor)}</td>
+                      <td class="py-3 px-3"><span class="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-bold text-xs">${escapeHtml(log.entity_name)}</span></td>
+                      <td class="py-3 px-3 text-slate-700">${escapeHtml(log.description)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
         </div>
       `;
     };
@@ -1852,41 +2473,41 @@
     window.app = {
       closeModal,
 
+      executePendingConfirm: async () => {
+        const fn = pendingConfirmCallback;
+        pendingConfirmCallback = null;
+        closeModal();
+        if (typeof fn === 'function') {
+          await fn();
+        }
+      },
+
       switchLoginTab: (tab) => {
         state.loginTab = tab;
         renderApp();
       },
 
-      // Tombol Pintas khusus saat IS_PREVIEW = true
-      quickPreviewLogin: (role) => {
-        if (!IS_PREVIEW) return;
-        if (role === 'student') {
-          state.role = 'student';
-          state.currentUser = state.students[0];
-          showToast(`Masuk cepat sebagai Siswa: ${state.currentUser.name}`, 'success');
-        } else {
-          state.role = 'admin';
-          state.currentUser = { email: 'admin.preview@sekolah.sch.id' };
-          showToast('Masuk cepat sebagai Administrator Preview', 'success');
-        }
-        renderApp();
-      },
-
-      // Login Siswa: Validasi NISN (10 Digit) & Password ke Tabel Database
+      // Login Siswa: Validasi NISN / Username & Password + Cek Status Izin Ujian
       handleStudentLogin: async (e) => {
         e.preventDefault();
-        const nisn = document.getElementById('login-student-nisn')?.value.trim();
+        const identifier = document.getElementById('login-student-nisn')?.value.trim();
         const password = document.getElementById('login-student-password')?.value.trim();
 
-        if (!/^\d{10}$/.test(nisn)) {
-          showToast('NISN wajib terdiri dari 10 digit angka!', 'warning');
+        if (!identifier || !password) {
+          showToast('NISN/Username dan Kata Sandi wajib diisi!', 'warning');
           return;
         }
 
         if (IS_PREVIEW) {
-          const found = state.students.find((s) => s.nisn === nisn && s.password === password);
+          const found = state.students.find(
+            (s) => !s.is_archived && (s.nisn === identifier || s.username === identifier) && s.password === password
+          );
           if (!found) {
-            showToast('NISN atau Password tidak cocok! Gunakan tombol Pintas Siswa di atas atau cek kartu ujian.', 'error');
+            showToast('NISN/Username atau Kata Sandi tidak valid!', 'error');
+            return;
+          }
+          if (found.can_take_exam === false) {
+            showToast('Akun Anda sedang dinonaktifkan sementara dari ujian. Hubungi Pengawas/Admin.', 'warning');
             return;
           }
           state.role = 'student';
@@ -1906,13 +2527,17 @@
           const { data, error } = await supabase
             .from('students')
             .select('*')
-            .eq('nisn', nisn)
+            .or(`nisn.eq.${identifier},username.eq.${identifier}`)
             .eq('password', password)
             .maybeSingle();
 
           if (error) throw error;
-          if (!data) {
-            showToast('NISN (10 Digit) atau Password salah!', 'error');
+          if (!data || data.is_archived) {
+            showToast('NISN/Username atau Kata Sandi salah!', 'error');
+            return;
+          }
+          if (data.can_take_exam === false) {
+            showToast('Status akun Anda tidak diizinkan mengikuti ujian. Hubungi Panitia.', 'warning');
             return;
           }
 
@@ -1987,7 +2612,729 @@
       },
 
       // ==========================================================================
-      // ALUR PENGERJAAN UJIAN SISWA
+      // CONTROLLER DATA MASTER (SISWA, KELAS, MAPEL, GURU, PERIODE, AKUN, LOG)
+      // ==========================================================================
+      switchMasterTab: (tabId) => {
+        state.masterTab = tabId;
+        renderApp();
+      },
+
+      setMasterFilter: (key, val) => {
+        state[key] = val;
+        renderApp();
+      },
+
+      togglePrintCardsView: () => {
+        state.showPrintCardsPreview = !state.showPrintCardsPreview;
+        renderApp();
+      },
+
+      // 1. CRUD & Validasi Duplikat Data Siswa
+      openStudentFormModal: (studentId = null) => {
+        const existing = studentId ? state.students.find((s) => String(s.id) === String(studentId)) : null;
+        const activeClasses = state.classes.filter((c) => !c.is_archived);
+        const activePeriod = getActiveAcademicYear();
+
+        openModal(`
+          <form onsubmit="window.app.saveStudentForm(event, '${existing ? existing.id : ''}')" class="space-y-3.5">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 class="text-lg font-extrabold text-slate-900">${existing ? 'Edit Data Siswa' : 'Tambah Peserta Siswa Baru'}</h3>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">NISN (10 Digit)</label>
+                <input type="text" id="form-student-nisn" maxlength="10" pattern="\\d{10}" required value="${escapeHtml(existing?.nisn || '')}" oninput="const u=document.getElementById('form-student-username'); if(u && !u.dataset.edited) u.value=this.value;" placeholder="0081234567" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Username / ID Login</label>
+                <input type="text" id="form-student-username" required value="${escapeHtml(existing?.username || existing?.nisn || '')}" oninput="this.dataset.edited='1'" placeholder="Otomatis mengikuti NISN" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nama Lengkap Siswa</label>
+              <input type="text" id="form-student-name" required value="${escapeHtml(existing?.name || '')}" placeholder="Masukkan nama lengkap peserta" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Jenis Kelamin</label>
+                <select id="form-student-gender" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold">
+                  <option value="L" ${existing?.gender === 'L' ? 'selected' : ''}>Laki-laki (L)</option>
+                  <option value="P" ${existing?.gender === 'P' ? 'selected' : ''}>Perempuan (P)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kelas</label>
+                <select id="form-student-class" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold">
+                  ${activeClasses.map((c) => `<option value="${escapeHtml(c.class_name)}" ${existing?.class_name === c.class_name ? 'selected' : ''}>${escapeHtml(c.class_name)}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nomor Ujian</label>
+                <input type="text" id="form-student-examno" value="${escapeHtml(existing?.exam_number || 'UJ-' + Math.floor(100 + Math.random() * 900))}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono font-bold" />
+              </div>
+            </div>
+
+            ${!existing ? `
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kata Sandi Awal</label>
+                <input type="password" id="form-student-password" required value="siswa123" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-mono" />
+                <span class="text-[11px] text-slate-400">Default kata sandi awal: <code>siswa123</code> (disimpan tersembunyi).</span>
+              </div>
+            ` : ''}
+
+            <div class="flex justify-end gap-2 pt-3">
+              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+              <button type="submit" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md">Simpan Data Siswa</button>
+            </div>
+          </form>
+        `);
+      },
+
+      saveStudentForm: async (e, studentId) => {
+        e.preventDefault();
+        const nisn = document.getElementById('form-student-nisn').value.trim();
+        const username = document.getElementById('form-student-username').value.trim() || nisn;
+        const name = document.getElementById('form-student-name').value.trim();
+        const gender = document.getElementById('form-student-gender').value;
+        const class_name = document.getElementById('form-student-class').value;
+        const exam_number = document.getElementById('form-student-examno').value.trim();
+        const passwordEl = document.getElementById('form-student-password');
+
+        if (!/^\d{10}$/.test(nisn)) {
+          showToast('Validasi Gagal: NISN wajib terdiri dari tepat 10 digit angka!', 'warning');
+          return;
+        }
+
+        // Validasi Otomatis: Cek Duplikat NISN atau Username
+        const duplicate = state.students.find(
+          (s) => String(s.id) !== String(studentId) && (s.nisn === nisn || (s.username && s.username === username))
+        );
+        if (duplicate) {
+          showToast(`Validasi Gagal: NISN (${nisn}) atau Username (${username}) sudah terdaftar atas nama ${duplicate.name}!`, 'error');
+          return;
+        }
+
+        const activePeriod = getActiveAcademicYear();
+        const payload = {
+          nisn,
+          username,
+          exam_number,
+          name,
+          gender,
+          class_name,
+          academic_year: activePeriod.year_name
+        };
+        if (!studentId) {
+          payload.password = passwordEl ? passwordEl.value.trim() : 'siswa123';
+          payload.can_take_exam = true;
+          payload.is_archived = false;
+        }
+
+        if (IS_PREVIEW) {
+          if (studentId) {
+            const idx = state.students.findIndex((s) => String(s.id) === String(studentId));
+            if (idx > -1) state.students[idx] = { ...state.students[idx], ...payload };
+            await recordAuditLog('UPDATE', 'Data Siswa', `Memperbarui identitas siswa ${name} (${nisn}) - Kelas ${class_name}`);
+          } else {
+            state.students.push({ id: 'std-' + Date.now(), ...payload, created_at: new Date().toISOString() });
+            await recordAuditLog('CREATE', 'Data Siswa', `Menambahkan siswa baru ${name} (${nisn}) ke Kelas ${class_name}`);
+          }
+          closeModal();
+          showToast('Data siswa berhasil disimpan!', 'success');
+          renderApp();
+          return;
+        }
+
+        try {
+          if (studentId) {
+            const { error } = await supabase.from('students').update(payload).eq('id', studentId);
+            if (error) throw error;
+            await recordAuditLog('UPDATE', 'Data Siswa', `Memperbarui siswa ${name} (${nisn})`);
+          } else {
+            const { error } = await supabase.from('students').insert([payload]);
+            if (error) throw error;
+            await recordAuditLog('CREATE', 'Data Siswa', `Menambahkan siswa baru ${name} (${nisn})`);
+          }
+          await syncDataFromSupabase();
+          closeModal();
+          showToast('Data siswa berhasil disimpan ke database!', 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menyimpan siswa: ' + err.message, 'error');
+        }
+      },
+
+      // Arsipkan Siswa (Bukan Hapus Permanen) dengan Konfirmasi Tindakan
+      toggleArchiveStudent: (studentId, archiveState) => {
+        const std = state.students.find((s) => String(s.id) === String(studentId));
+        if (!std) return;
+
+        openConfirmModal({
+          title: archiveState ? 'Arsipkan Data Siswa?' : 'Pulihkan Data Siswa?',
+          message: archiveState
+            ? `Siswa <strong>${escapeHtml(std.name)} (${escapeHtml(std.nisn)})</strong> akan dipindahkan ke Arsip. Siswa tidak dihapus permanen sehingga seluruh riwayat nilai ujiannya tetap dapat ditelusuri.`
+            : `Pulihkan <strong>${escapeHtml(std.name)}</strong> kembali ke daftar siswa aktif?`,
+          confirmText: archiveState ? 'Ya, Arsipkan' : 'Ya, Pulihkan',
+          confirmColor: archiveState ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700',
+          icon: 'fa-box-archive',
+          onConfirm: async () => {
+            if (IS_PREVIEW) {
+              std.is_archived = archiveState;
+            } else if (supabase) {
+              await supabase.from('students').update({ is_archived: archiveState }).eq('id', studentId);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog(archiveState ? 'ARCHIVE' : 'RESTORE', 'Data Siswa', `${archiveState ? 'Mengarsipkan' : 'Memulihkan'} siswa ${std.name} (${std.nisn})`);
+            showToast(archiveState ? 'Siswa berhasil diarsipkan.' : 'Siswa berhasil dipulihkan.', 'info');
+            renderApp();
+          }
+        });
+      },
+
+      // Aktivasi Massal Akun Siswa
+      bulkActivateStudents: (activate = true) => {
+        const targetList = state.students.filter((s) => !s.is_archived && (state.studentClassFilter === 'ALL' || s.class_name === state.studentClassFilter));
+        if (targetList.length === 0) {
+          showToast('Tidak ada siswa aktif pada filter saat ini.', 'warning');
+          return;
+        }
+
+        openConfirmModal({
+          title: 'Konfirmasi Aktivasi Akun Massal',
+          message: `Anda akan mengaktifkan status izin ujian untuk <strong>${targetList.length} siswa</strong> (${state.studentClassFilter === 'ALL' ? 'Semua Kelas' : 'Kelas ' + state.studentClassFilter}). Lanjutkan?`,
+          confirmText: 'Aktifkan Semua',
+          onConfirm: async () => {
+            if (IS_PREVIEW) {
+              targetList.forEach((s) => { s.can_take_exam = activate; });
+            } else if (supabase) {
+              const ids = targetList.map((s) => s.id);
+              await supabase.from('students').update({ can_take_exam: activate }).in('id', ids);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog('BULK_ACTIVATE', 'Data Siswa & Akun', `Aktivasi massal ${targetList.length} akun siswa (${state.studentClassFilter})`);
+            showToast(`${targetList.length} akun siswa berhasil diaktifkan secara massal!`, 'success');
+            renderApp();
+          }
+        });
+      },
+
+      // Impor Massal Siswa via Excel/CSV dengan Validasi Duplikat Otomatis
+      openStudentBulkImportModal: () => {
+        openModal(`
+          <div class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div>
+                <h3 class="text-base font-extrabold text-slate-900">Impor Massal Data Siswa (Excel / CSV)</h3>
+                <p class="text-xs text-slate-500">Dilengkapi deteksi otomatis NISN & Username duplikat sebelum disimpan.</p>
+              </div>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold text-emerald-950">Format Kolom: nisn, nama, jk, kelas, username, password</span>
+                <button type="button" onclick="window.app.downloadStudentImportTemplate()" class="text-xs font-bold text-emerald-700 underline">
+                  Unduh Template Excel Siswa
+                </button>
+              </div>
+              <input type="file" accept=".xlsx,.xls,.csv" onchange="window.app.handleStudentExcelImport(event)" class="block w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-600 file:text-white cursor-pointer" />
+            </div>
+          </div>
+        `);
+      },
+
+      downloadStudentImportTemplate: () => {
+        if (typeof XLSX === 'undefined') return;
+        const sample = [
+          { nisn: '0081112223', nama: 'Bima Arya Putra', jk: 'L', kelas: 'VII.1', username: '0081112223', nomor_ujian: 'UJ-26-101' },
+          { nisn: '0081112224', nama: 'Citra Kirana Sari', jk: 'P', kelas: 'VIII.2', username: '0081112224', nomor_ujian: 'UJ-26-102' }
+        ];
+        const ws = XLSX.utils.json_to_sheet(sample);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Template_Siswa');
+        XLSX.writeFile(wb, 'Template_Impor_Siswa_Exambro.xlsx');
+      },
+
+      handleStudentExcelImport: (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            const activePeriod = getActiveAcademicYear();
+
+            let importedCount = 0;
+            let skippedDuplicates = 0;
+            const newRecords = [];
+
+            rows.forEach((r, idx) => {
+              const norm = {};
+              Object.keys(r).forEach((k) => { norm[k.trim().toLowerCase()] = String(r[k] ?? '').trim(); });
+              const nisn = norm['nisn'] || '';
+              const name = norm['nama'] || norm['name'] || norm['nama lengkap'] || '';
+              const gender = (norm['jk'] || norm['jenis kelamin'] || 'L').toUpperCase().startsWith('P') ? 'P' : 'L';
+              const class_name = norm['kelas'] || norm['class'] || 'VII.1';
+              const username = norm['username'] || nisn;
+              const exam_number = norm['nomor_ujian'] || `UJ-IMP-${idx + 1}`;
+
+              if (!nisn || !name) return;
+
+              const existsInState = state.students.some((s) => s.nisn === nisn || s.username === username);
+              const existsInBatch = newRecords.some((s) => s.nisn === nisn || s.username === username);
+
+              if (existsInState || existsInBatch) {
+                skippedDuplicates++;
+                return;
+              }
+
+              newRecords.push({
+                nisn,
+                username,
+                exam_number,
+                name,
+                gender,
+                class_name,
+                academic_year: activePeriod.year_name,
+                password: norm['password'] || 'siswa123',
+                can_take_exam: true,
+                is_archived: false,
+                created_at: new Date().toISOString()
+              });
+              importedCount++;
+            });
+
+            if (newRecords.length === 0) {
+              showToast(`Tidak ada siswa baru yang disimpan (${skippedDuplicates} duplikat NISN/Username dilewati).`, 'warning');
+              return;
+            }
+
+            if (IS_PREVIEW) {
+              newRecords.forEach((rec, i) => state.students.push({ id: 'std-imp-' + Date.now() + '-' + i, ...rec }));
+            } else if (supabase) {
+              const { error } = await supabase.from('students').insert(newRecords);
+              if (error) throw error;
+              await syncDataFromSupabase();
+            }
+
+            await recordAuditLog('BULK_IMPORT', 'Data Siswa', `Impor massal ${importedCount} siswa (${skippedDuplicates} duplikat dilewati)`);
+            closeModal();
+            showToast(`Berhasil mengimpor ${importedCount} siswa! (${skippedDuplicates} duplikat otomatis dilewati)`, 'success');
+            renderApp();
+          } catch (err) {
+            showToast('Gagal mengimpor file siswa: ' + err.message, 'error');
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      },
+
+      // 2. CRUD Data Kelas (VII, VIII, IX)
+      openClassFormModal: (classId = null) => {
+        const existing = classId ? state.classes.find((c) => String(c.id) === String(classId)) : null;
+        const activePeriod = getActiveAcademicYear();
+
+        openModal(`
+          <form onsubmit="window.app.saveClassForm(event, '${existing ? existing.id : ''}')" class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 class="text-lg font-extrabold text-slate-900">${existing ? 'Ubah Data Kelas' : 'Tambah Rombongan Kelas'}</h3>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tingkat Kelas</label>
+                <select id="form-class-level" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-bold">
+                  <option value="VII" ${existing?.level === 'VII' ? 'selected' : ''}>Tingkat VII</option>
+                  <option value="VIII" ${existing?.level === 'VIII' ? 'selected' : ''}>Tingkat VIII</option>
+                  <option value="IX" ${existing?.level === 'IX' ? 'selected' : ''}>Tingkat IX</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nama Kelas</label>
+                <input type="text" id="form-class-name" required value="${escapeHtml(existing?.class_name || '')}" placeholder="Contoh: VII.5" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tahun Ajaran</label>
+              <input type="text" id="form-class-year" required value="${escapeHtml(existing?.academic_year || activePeriod.year_name)}" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Simpan Kelas</button>
+            </div>
+          </form>
+        `);
+      },
+
+      saveClassForm: async (e, classId) => {
+        e.preventDefault();
+        const level = document.getElementById('form-class-level').value;
+        const class_name = document.getElementById('form-class-name').value.trim();
+        const academic_year = document.getElementById('form-class-year').value.trim();
+
+        const oldClass = classId ? state.classes.find((c) => String(c.id) === String(classId)) : null;
+
+        if (IS_PREVIEW) {
+          if (oldClass) {
+            const oldName = oldClass.class_name;
+            oldClass.level = level;
+            oldClass.class_name = class_name;
+            oldClass.academic_year = academic_year;
+            // Perbarui referensi kelas pada siswa jika nama kelas diubah
+            state.students.forEach((s) => { if (s.class_name === oldName) s.class_name = class_name; });
+          } else {
+            state.classes.push({ id: 'cls-' + Date.now(), level, class_name, academic_year, is_archived: false });
+          }
+        } else if (supabase) {
+          if (classId) {
+            await supabase.from('classes').update({ level, class_name, academic_year }).eq('id', classId);
+          } else {
+            await supabase.from('classes').insert([{ level, class_name, academic_year, is_archived: false }]);
+          }
+          await syncDataFromSupabase();
+        }
+
+        await recordAuditLog(classId ? 'UPDATE' : 'CREATE', 'Data Kelas', `${classId ? 'Mengubah' : 'Menambah'} kelas ${class_name} (Tingkat ${level})`);
+        closeModal();
+        showToast('Data kelas berhasil disimpan!', 'success');
+        renderApp();
+      },
+
+      archiveClassItem: (classId) => {
+        const cls = state.classes.find((c) => String(c.id) === String(classId));
+        if (!cls) return;
+        openConfirmModal({
+          title: 'Arsipkan Kelas?',
+          message: `Kelas <strong>${escapeHtml(cls.class_name)}</strong> akan diarsipkan. Lanjutkan?`,
+          confirmText: 'Arsipkan',
+          confirmColor: 'bg-amber-600 hover:bg-amber-700',
+          onConfirm: async () => {
+            if (IS_PREVIEW) cls.is_archived = true;
+            else if (supabase) {
+              await supabase.from('classes').update({ is_archived: true }).eq('id', classId);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog('ARCHIVE', 'Data Kelas', `Mengarsipkan kelas ${cls.class_name}`);
+            showToast('Kelas diarsipkan.', 'info');
+            renderApp();
+          }
+        });
+      },
+
+      // 3. CRUD Data Mata Pelajaran
+      openSubjectFormModal: (subjectId = null) => {
+        const existing = subjectId ? state.subjects.find((s) => String(s.id) === String(subjectId)) : null;
+        openModal(`
+          <form onsubmit="window.app.saveSubjectForm(event, '${existing ? existing.id : ''}')" class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 class="text-lg font-extrabold text-slate-900">${existing ? 'Edit Mata Pelajaran' : 'Tambah Mata Pelajaran'}</h3>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kode Mapel</label>
+                <input type="text" id="form-sub-code" required value="${escapeHtml(existing?.code || '')}" placeholder="Contoh: BIN" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-bold uppercase" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tingkat Kelas Relevan</label>
+                <select id="form-sub-level" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm font-bold">
+                  <option value="Semua" ${existing?.level === 'Semua' ? 'selected' : ''}>Semua Tingkat (VII-IX)</option>
+                  <option value="VII" ${existing?.level === 'VII' ? 'selected' : ''}>Tingkat VII</option>
+                  <option value="VIII" ${existing?.level === 'VIII' ? 'selected' : ''}>Tingkat VIII</option>
+                  <option value="IX" ${existing?.level === 'IX' ? 'selected' : ''}>Tingkat IX</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nama Mata Pelajaran</label>
+              <input type="text" id="form-sub-name" required value="${escapeHtml(existing?.name || '')}" placeholder="Contoh: Bahasa Indonesia" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Simpan Mapel</button>
+            </div>
+          </form>
+        `);
+      },
+
+      saveSubjectForm: async (e, subjectId) => {
+        e.preventDefault();
+        const code = document.getElementById('form-sub-code').value.trim().toUpperCase();
+        const name = document.getElementById('form-sub-name').value.trim();
+        const level = document.getElementById('form-sub-level').value;
+
+        if (IS_PREVIEW) {
+          if (subjectId) {
+            const s = state.subjects.find((x) => String(x.id) === String(subjectId));
+            if (s) { s.code = code; s.name = name; s.level = level; }
+          } else {
+            state.subjects.push({ id: 'sub-' + Date.now(), code, name, level, is_archived: false });
+          }
+        } else if (supabase) {
+          if (subjectId) await supabase.from('subjects').update({ code, name, level }).eq('id', subjectId);
+          else await supabase.from('subjects').insert([{ code, name, level, is_archived: false }]);
+          await syncDataFromSupabase();
+        }
+        await recordAuditLog(subjectId ? 'UPDATE' : 'CREATE', 'Mata Pelajaran', `${subjectId ? 'Memperbarui' : 'Menambahkan'} mapel [${code}] ${name}`);
+        closeModal();
+        showToast('Mata pelajaran berhasil disimpan!', 'success');
+        renderApp();
+      },
+
+      archiveSubjectItem: (subjectId) => {
+        const sub = state.subjects.find((s) => String(s.id) === String(subjectId));
+        if (!sub) return;
+        openConfirmModal({
+          title: 'Arsipkan Mata Pelajaran?',
+          message: `Mata pelajaran <strong>${escapeHtml(sub.name)}</strong> akan diarsipkan.`,
+          confirmText: 'Arsipkan',
+          confirmColor: 'bg-amber-600 hover:bg-amber-700',
+          onConfirm: async () => {
+            if (IS_PREVIEW) sub.is_archived = true;
+            else if (supabase) {
+              await supabase.from('subjects').update({ is_archived: true }).eq('id', subjectId);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog('ARCHIVE', 'Mata Pelajaran', `Mengarsipkan mapel ${sub.name}`);
+            renderApp();
+          }
+        });
+      },
+
+      // 4. CRUD Data Guru / Pengampu
+      openTeacherFormModal: (teacherId = null) => {
+        const existing = teacherId ? state.teachers.find((t) => String(t.id) === String(teacherId)) : null;
+        const activeSubjects = state.subjects.filter((s) => !s.is_archived);
+        openModal(`
+          <form onsubmit="window.app.saveTeacherForm(event, '${existing ? existing.id : ''}')" class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 class="text-lg font-extrabold text-slate-900">${existing ? 'Edit Guru Pengampu' : 'Tambah Guru / Pengampu'}</h3>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">NIP (Opsional)</label>
+              <input type="text" id="form-tch-nip" value="${escapeHtml(existing?.nip || '')}" placeholder="Kosongkan jika belum ada NIP" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nama Lengkap Guru & Gelar</label>
+              <input type="text" id="form-tch-name" required value="${escapeHtml(existing?.name || '')}" placeholder="Contoh: Hendra Wijaya, S.Pd." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Mata Pelajaran yang Diampu</label>
+              <select id="form-tch-subject" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold">
+                ${activeSubjects.map((s) => `<option value="${escapeHtml(s.code)}|${escapeHtml(s.name)}" ${existing?.subject_code === s.code ? 'selected' : ''}>[${escapeHtml(s.code)}] ${escapeHtml(s.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Simpan Guru</button>
+            </div>
+          </form>
+        `);
+      },
+
+      saveTeacherForm: async (e, teacherId) => {
+        e.preventDefault();
+        const nip = document.getElementById('form-tch-nip').value.trim();
+        const name = document.getElementById('form-tch-name').value.trim();
+        const [subject_code, subject_name] = (document.getElementById('form-tch-subject').value || '|').split('|');
+
+        if (IS_PREVIEW) {
+          if (teacherId) {
+            const t = state.teachers.find((x) => String(x.id) === String(teacherId));
+            if (t) { t.nip = nip; t.name = name; t.subject_code = subject_code; t.subject_name = subject_name; }
+          } else {
+            state.teachers.push({ id: 'tch-' + Date.now(), nip, name, subject_code, subject_name, is_archived: false });
+          }
+        } else if (supabase) {
+          if (teacherId) await supabase.from('teachers').update({ nip, name, subject_code, subject_name }).eq('id', teacherId);
+          else await supabase.from('teachers').insert([{ nip, name, subject_code, subject_name, is_archived: false }]);
+          await syncDataFromSupabase();
+        }
+        await recordAuditLog(teacherId ? 'UPDATE' : 'CREATE', 'Data Guru', `${teacherId ? 'Memperbarui' : 'Menambahkan'} guru ${name} (${subject_name})`);
+        closeModal();
+        showToast('Data guru pengampu berhasil disimpan!', 'success');
+        renderApp();
+      },
+
+      archiveTeacherItem: (teacherId) => {
+        const tch = state.teachers.find((t) => String(t.id) === String(teacherId));
+        if (!tch) return;
+        openConfirmModal({
+          title: 'Arsipkan Data Guru?',
+          message: `Data guru <strong>${escapeHtml(tch.name)}</strong> akan diarsipkan.`,
+          confirmText: 'Arsipkan',
+          confirmColor: 'bg-amber-600 hover:bg-amber-700',
+          onConfirm: async () => {
+            if (IS_PREVIEW) tch.is_archived = true;
+            else if (supabase) {
+              await supabase.from('teachers').update({ is_archived: true }).eq('id', teacherId);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog('ARCHIVE', 'Data Guru', `Mengarsipkan guru ${tch.name}`);
+            renderApp();
+          }
+        });
+      },
+
+      // 5. CRUD Tahun Ajaran & Semester
+      openPeriodFormModal: () => {
+        openModal(`
+          <form onsubmit="window.app.savePeriodForm(event)" class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 class="text-lg font-extrabold text-slate-900">Tambah Tahun Ajaran & Semester</h3>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tahun Ajaran</label>
+              <input type="text" id="form-ay-name" required placeholder="Contoh: 2026/2027" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Semester</label>
+              <select id="form-ay-sem" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold">
+                <option value="Ganjil">Semester Ganjil</option>
+                <option value="Genap">Semester Genap</option>
+              </select>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Simpan Periode</button>
+            </div>
+          </form>
+        `);
+      },
+
+      savePeriodForm: async (e) => {
+        e.preventDefault();
+        const year_name = document.getElementById('form-ay-name').value.trim();
+        const semester = document.getElementById('form-ay-sem').value;
+        if (IS_PREVIEW) {
+          state.academic_years.unshift({ id: 'ay-' + Date.now(), year_name, semester, is_active: false, created_at: new Date().toISOString() });
+        } else if (supabase) {
+          await supabase.from('academic_years').insert([{ year_name, semester, is_active: false }]);
+          await syncDataFromSupabase();
+        }
+        await recordAuditLog('CREATE', 'Tahun Ajaran', `Menambahkan periode TA ${year_name} Semester ${semester}`);
+        closeModal();
+        showToast('Periode akademik berhasil ditambahkan!', 'success');
+        renderApp();
+      },
+
+      setActiveAcademicYear: (periodId) => {
+        const target = state.academic_years.find((a) => String(a.id) === String(periodId));
+        if (!target) return;
+        openConfirmModal({
+          title: 'Aktifkan Periode Tahun Ajaran?',
+          message: `Ubah periode aktif menjadi <strong>TA ${escapeHtml(target.year_name)} Semester ${escapeHtml(target.semester)}</strong>? Data ujian dari periode sebelumnya tetap tersimpan aman sebagai arsip.`,
+          confirmText: 'Aktifkan Periode',
+          onConfirm: async () => {
+            if (IS_PREVIEW) {
+              state.academic_years.forEach((a) => { a.is_active = String(a.id) === String(periodId); });
+            } else if (supabase) {
+              await supabase.from('academic_years').update({ is_active: false }).neq('id', periodId);
+              await supabase.from('academic_years').update({ is_active: true }).eq('id', periodId);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog('ACTIVATE', 'Tahun Ajaran', `Mengaktifkan periode TA ${target.year_name} (${target.semester})`);
+            showToast(`Periode aktif diatur ke ${target.year_name} (${target.semester})`, 'success');
+            renderApp();
+          }
+        });
+      },
+
+      // 6. Pengaturan Peserta & Akun (Reset Sandi, Toggle Izin, Ekspor Tanpa Plain-Text Password)
+      toggleStudentExamPermission: (studentId) => {
+        const std = state.students.find((s) => String(s.id) === String(studentId));
+        if (!std) return;
+        const nextStatus = std.can_take_exam === false ? true : false;
+
+        openConfirmModal({
+          title: nextStatus ? 'Izinkan Siswa Mengikuti Ujian?' : 'Nonaktifkan Akses Ujian Siswa?',
+          message: `Ubah status akses ujian untuk <strong>${escapeHtml(std.name)}</strong> menjadi <strong>${nextStatus ? 'DIIZINKAN' : 'DINONAKTIFKAN'}</strong>?`,
+          confirmText: 'Ya, Ubah Status',
+          confirmColor: nextStatus ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700',
+          onConfirm: async () => {
+            if (IS_PREVIEW) std.can_take_exam = nextStatus;
+            else if (supabase) {
+              await supabase.from('students').update({ can_take_exam: nextStatus }).eq('id', studentId);
+              await syncDataFromSupabase();
+            }
+            await recordAuditLog('ACCESS_CHANGE', 'Pengaturan Akun', `Mengubah izin ujian ${std.name} menjadi ${nextStatus ? 'Diizinkan' : 'Diblokir'}`);
+            showToast('Status akses ujian siswa diperbarui.', 'success');
+            renderApp();
+          }
+        });
+      },
+
+      openResetPasswordModal: (studentId) => {
+        const std = state.students.find((s) => String(s.id) === String(studentId));
+        if (!std) return;
+        openModal(`
+          <form onsubmit="window.app.confirmResetStudentPassword(event, '${std.id}')" class="space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h3 class="text-base font-extrabold text-slate-900">Reset Kata Sandi Peserta</h3>
+              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-xs text-slate-600">Masukkan kata sandi baru untuk <strong>${escapeHtml(std.name)}</strong> (Username: <code>${escapeHtml(std.username || std.nisn)}</code>).</p>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kata Sandi Baru</label>
+              <input type="password" id="reset-pass-input" required minlength="4" value="siswa123" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono" />
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+              <button type="submit" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold">Simpan & Reset Sandi</button>
+            </div>
+          </form>
+        `);
+      },
+
+      confirmResetStudentPassword: async (e, studentId) => {
+        e.preventDefault();
+        const newPassword = document.getElementById('reset-pass-input').value.trim();
+        const std = state.students.find((s) => String(s.id) === String(studentId));
+        if (!std) return;
+
+        if (IS_PREVIEW) std.password = newPassword;
+        else if (supabase) {
+          await supabase.from('students').update({ password: newPassword }).eq('id', studentId);
+          await syncDataFromSupabase();
+        }
+        await recordAuditLog('RESET_PASSWORD', 'Pengaturan Akun', `Mereset kata sandi untuk siswa ${std.name} (${std.nisn})`);
+        closeModal();
+        showToast(`Kata sandi ${std.name} berhasil direset!`, 'success');
+        renderApp();
+      },
+
+      exportAccountsToExcel: () => {
+        if (typeof XLSX === 'undefined') return;
+        const rows = state.students.filter((s) => !s.is_archived).map((s, idx) => ({
+          No: idx + 1,
+          Nomor_Ujian: s.exam_number || `UJ-${String(idx + 1).padStart(3, '0')}`,
+          NISN: s.nisn,
+          Username_Login: s.username || s.nisn,
+          Nama_Lengkap: s.name,
+          Jenis_Kelamin: s.gender || 'L',
+          Kelas: s.class_name,
+          Kata_Sandi: '******** (Terenkripsi)',
+          Status_Izin_Ujian: s.can_take_exam !== false ? 'Diizinkan' : 'Diblokir'
+        }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Daftar_Akun_Peserta');
+        XLSX.writeFile(wb, 'Daftar_Akun_Peserta_Exambro.xlsx');
+      },
+
+      // ==========================================================================
+      // CONTROLLER MULAI & PENGERJAAN UJIAN SISWA (FULLSCREEN & TIMER)
       // ==========================================================================
       startStudentExam: async (examId) => {
         const exam = state.exams.find((e) => String(e.id) === String(examId));
@@ -1998,17 +3345,16 @@
           .sort((a, b) => (a.order_number || 0) - (b.order_number || 0));
 
         if (qList.length === 0) {
-          showToast('Soal belum tersedia pada ujian ini!', 'warning');
+          showToast('Soal untuk ujian ini belum tersedia. Hubungi Pengawas.', 'warning');
           return;
         }
 
-        // Cari sesi yang sudah ada atau buat sesi baru
         let session = state.exam_sessions.find(
           (s) => String(s.exam_id) === String(exam.id) && String(s.student_id) === String(state.currentUser.id)
         );
 
         if (session && session.status === 'blocked') {
-          showToast('Sesi ujian Anda terkunci karena pelanggaran! Hubungi pengawas.', 'error');
+          showToast('Sesi ujian Anda terkunci karena pelanggaran. Hubungi Pengawas!', 'error');
           return;
         }
 
@@ -2044,7 +3390,6 @@
           }
         }
 
-        // Masuk Mode Fullscreen Exambro
         await enterFullscreenMode();
 
         state.activeExam = exam;
@@ -2053,21 +3398,16 @@
         state.currentQuestionIndex = 0;
         state.doubtFlags = {};
         state.isExamRunning = true;
-        state.lastViolationTimestamp = Date.now();
-
-        // Hitung sisa waktu
-        const elapsedSec = Math.floor((Date.now() - new Date(session.started_at).getTime()) / 1000);
-        const totalSec = (exam.duration_minutes || 60) * 60;
-        state.remainingSeconds = Math.max(30, totalSec - elapsedSec);
+        state.remainingSeconds = (exam.duration_minutes || 60) * 60;
 
         clearInterval(state.timerInterval);
         state.timerInterval = setInterval(() => {
+          if (!state.isExamRunning) return;
           state.remainingSeconds--;
           const timerEl = document.getElementById('exam-timer-display');
           if (timerEl) timerEl.textContent = formatTimer(state.remainingSeconds);
 
           if (state.remainingSeconds <= 0) {
-            clearInterval(state.timerInterval);
             window.app.submitStudentExamFinal(true);
           }
         }, 1000);
@@ -2233,118 +3573,6 @@
             : `Ujian selesai dikumpulkan! Skor Anda: ${score}`,
           'success'
         );
-      },
-
-      // ==========================================================================
-      // CRUD ADMIN: DATA SISWA & KARTU UJIAN
-      // ==========================================================================
-      setCardClassFilter: (val) => {
-        state.cardClassFilter = val;
-        renderApp();
-      },
-
-      openStudentFormModal: (studentId = null) => {
-        const existing = studentId ? state.students.find((s) => String(s.id) === String(studentId)) : null;
-        const randomPass = 'cbt' + Math.floor(1000 + Math.random() * 9000);
-
-        openModal(`
-          <form onsubmit="window.app.saveStudentForm(event, '${existing ? existing.id : ''}')" class="space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 class="text-lg font-extrabold text-slate-900">${existing ? 'Edit Data Siswa' : 'Tambah Siswa Baru'}</h3>
-              <button type="button" onclick="window.app.closeModal()" class="text-slate-400 hover:text-slate-600">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">NISN Siswa (Wajib 10 Digit Angka)</label>
-              <input type="text" id="form-student-nisn" maxlength="10" pattern="\\d{10}" required value="${escapeHtml(existing?.nisn || '')}" placeholder="0081234567" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-bold" />
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Nama Lengkap Siswa</label>
-              <input type="text" id="form-student-name" required value="${escapeHtml(existing?.name || '')}" placeholder="Masukkan nama lengkap" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Kelas</label>
-                <input type="text" id="form-student-class" required value="${escapeHtml(existing?.class_name || 'XII MIPA 1')}" placeholder="XII MIPA 1" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold" />
-              </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Password Kartu</label>
-                <input type="text" id="form-student-password" required value="${escapeHtml(existing?.password || randomPass)}" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-mono font-bold" />
-              </div>
-            </div>
-
-            <div class="flex justify-end gap-2 pt-3">
-              <button type="button" onclick="window.app.closeModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
-              <button type="submit" class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md">Simpan Siswa</button>
-            </div>
-          </form>
-        `);
-      },
-
-      saveStudentForm: async (e, studentId) => {
-        e.preventDefault();
-        const payload = {
-          nisn: document.getElementById('form-student-nisn').value.trim(),
-          name: document.getElementById('form-student-name').value.trim(),
-          class_name: document.getElementById('form-student-class').value.trim(),
-          password: document.getElementById('form-student-password').value.trim()
-        };
-
-        if (!/^\d{10}$/.test(payload.nisn)) {
-          showToast('NISN harus tepat 10 digit angka!', 'warning');
-          return;
-        }
-
-        if (IS_PREVIEW) {
-          if (studentId) {
-            const idx = state.students.findIndex((s) => String(s.id) === String(studentId));
-            if (idx > -1) state.students[idx] = { ...state.students[idx], ...payload };
-          } else {
-            state.students.push({ id: 'std-' + Date.now(), ...payload, created_at: new Date().toISOString() });
-          }
-          closeModal();
-          showToast('Data siswa berhasil disimpan!', 'success');
-          renderApp();
-          return;
-        }
-
-        try {
-          if (studentId) {
-            const { error } = await supabase.from('students').update(payload).eq('id', studentId);
-            if (error) throw error;
-          } else {
-            const { error } = await supabase.from('students').insert([payload]);
-            if (error) throw error;
-          }
-          await syncDataFromSupabase();
-          closeModal();
-          showToast('Data siswa berhasil disimpan ke database!', 'success');
-          renderApp();
-        } catch (err) {
-          showToast('Gagal menyimpan siswa: ' + err.message, 'error');
-        }
-      },
-
-      deleteStudent: async (studentId) => {
-        if (IS_PREVIEW) {
-          state.students = state.students.filter((s) => String(s.id) !== String(studentId));
-          showToast('Siswa dihapus dari daftar preview.', 'info');
-          renderApp();
-          return;
-        }
-        try {
-          const { error } = await supabase.from('students').delete().eq('id', studentId);
-          if (error) throw error;
-          await syncDataFromSupabase();
-          showToast('Data siswa berhasil dihapus!', 'info');
-          renderApp();
-        } catch (err) {
-          showToast('Gagal menghapus siswa: ' + err.message, 'error');
-        }
       },
 
       // ==========================================================================
