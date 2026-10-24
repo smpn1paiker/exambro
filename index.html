@@ -639,9 +639,90 @@
     function loadSavedCardConfig() {
       try {
         const raw = localStorage.getItem('exambro_card_config_v1');
-        if (raw) return { ...defaultCardConfig, ...JSON.parse(raw) };
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const clean = { ...defaultCardConfig };
+          Object.keys(defaultCardConfig).forEach(k => {
+            if (parsed && parsed[k] !== null && parsed[k] !== undefined) {
+              clean[k] = String(parsed[k]);
+            }
+          });
+          return clean;
+        }
       } catch (e) {}
       return { ...defaultCardConfig };
+    }
+
+    // Cache Blob URL untuk gambar kartu agar tidak membuat memori browser penuh (penyebab layar hitam pada 380+ siswa)
+    const cardBlobUrlCache = {
+      logo_left: { raw: null, url: '' },
+      logo_right: { raw: null, url: '' },
+      principal_signature: { raw: null, url: '' }
+    };
+
+    function getCardImageSrc(field) {
+      const raw = state.cardConfig && state.cardConfig[field] ? String(state.cardConfig[field]) : '';
+      if (!raw) return '';
+      if (!raw.startsWith('data:image/')) return raw;
+
+      const cacheEntry = cardBlobUrlCache[field];
+      if (cacheEntry && cacheEntry.raw === raw && cacheEntry.url) {
+        return cacheEntry.url;
+      }
+
+      try {
+        const parts = raw.split(',');
+        if (parts.length < 2) return raw;
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        if (cacheEntry && cacheEntry.url && cacheEntry.url.startsWith('blob:')) {
+          URL.revokeObjectURL(cacheEntry.url);
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        cardBlobUrlCache[field] = { raw, url: blobUrl };
+        return blobUrl;
+      } catch (e) {
+        return raw;
+      }
+    }
+
+    // Kompresi otomatis gambar logo & tanda tangan agar ringan disimpan dan dirender
+    function compressImageDataUrl(dataUrl, maxWidth = 240, maxHeight = 240) {
+      return new Promise((resolve) => {
+        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+          return resolve(dataUrl || '');
+        }
+        const img = new Image();
+        img.onload = () => {
+          try {
+            let w = img.width || maxWidth;
+            let h = img.height || maxHeight;
+            if (w > maxWidth || h > maxHeight) {
+              const ratio = Math.min(maxWidth / w, maxHeight / h);
+              w = Math.max(1, Math.round(w * ratio));
+              h = Math.max(1, Math.round(h * ratio));
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/png'));
+          } catch (e) {
+            resolve(dataUrl);
+          }
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      });
     }
 
     // ============================================================================
@@ -670,6 +751,7 @@
         className: 'ALL'
       },
       showCardDesigner: true,
+      showAllCardsPreview: false,
       cardConfig: loadSavedCardConfig(),
 
       // State Ujian Siswa (Exambro)
@@ -971,12 +1053,25 @@
         if (sesRes.data) state.exam_sessions = sesRes.data;
         if (cardRes && cardRes.data) {
           const localSaved = loadSavedCardConfig();
+          const serverData = {};
+          Object.keys(defaultCardConfig).forEach(k => {
+            if (cardRes.data[k] !== null && cardRes.data[k] !== undefined && cardRes.data[k] !== '') {
+              serverData[k] = String(cardRes.data[k]);
+            }
+          });
           state.cardConfig = {
             ...defaultCardConfig,
             ...localSaved,
-            ...cardRes.data,
-            principal_signature: cardRes.data.principal_signature || localSaved.principal_signature || ''
+            ...serverData,
+            id: cardRes.data.id || null,
+            principal_signature: serverData.principal_signature || localSaved.principal_signature || ''
           };
+          // Kompresi otomatis jika ada logo/tanda tangan berukuran terlalu besar dari penyimpanan sebelumnya
+          for (const imgField of ['logo_left', 'logo_right', 'principal_signature']) {
+            if (state.cardConfig[imgField] && state.cardConfig[imgField].length > 60000) {
+              state.cardConfig[imgField] = await compressImageDataUrl(state.cardConfig[imgField], 240, 240);
+            }
+          }
           try { localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig)); } catch (e) {}
         }
 
@@ -1270,16 +1365,28 @@
       `;
 
       const container = document.getElementById('admin-tab-container');
-      if (state.adminTab === 'dashboard') renderAdminDashboard(container);
-      else if (state.adminTab === 'master-students') renderMasterStudentsTab(container);
-      else if (state.adminTab === 'master-classes') renderMasterClassesTab(container);
-      else if (state.adminTab === 'master-subjects') renderMasterSubjectsTab(container);
-      else if (state.adminTab === 'master-teachers') renderMasterTeachersTab(container);
-      else if (state.adminTab === 'master-periods') renderMasterPeriodsTab(container);
-      else if (state.adminTab === 'master-accounts') renderMasterAccountsTab(container);
-      else if (state.adminTab === 'schedules') renderAdminSchedulesTab(container);
-      else if (state.adminTab === 'exams') renderAdminExamsTab(container);
-      else if (state.adminTab === 'results') renderAdminResultsTab(container);
+      try {
+        if (state.adminTab === 'dashboard') renderAdminDashboard(container);
+        else if (state.adminTab === 'master-students') renderMasterStudentsTab(container);
+        else if (state.adminTab === 'master-classes') renderMasterClassesTab(container);
+        else if (state.adminTab === 'master-subjects') renderMasterSubjectsTab(container);
+        else if (state.adminTab === 'master-teachers') renderMasterTeachersTab(container);
+        else if (state.adminTab === 'master-periods') renderMasterPeriodsTab(container);
+        else if (state.adminTab === 'master-accounts') renderMasterAccountsTab(container);
+        else if (state.adminTab === 'schedules') renderAdminSchedulesTab(container);
+        else if (state.adminTab === 'exams') renderAdminExamsTab(container);
+        else if (state.adminTab === 'results') renderAdminResultsTab(container);
+      } catch (err) {
+        if (container) {
+          container.innerHTML = `
+            <div class="glass-card p-6 rounded-2xl border border-rose-200 text-slate-800 space-y-3">
+              <div class="font-extrabold text-rose-600 text-sm"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>Terjadi Kendala Tampilan Menu</div>
+              <p class="text-xs text-slate-600">${escapeHtml(err.message || String(err))}</p>
+              <button onclick="window.app.setAdminTab('dashboard')" class="btn-3d px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Kembali ke Dashboard</button>
+            </div>
+          `;
+        }
+      }
     }
 
     // ============================================================================
@@ -1957,14 +2064,25 @@
     // ============================================================================
     function renderMasterAccountsTab(container) {
       const activeList = state.students.filter(s => {
-        if (s.is_archived) return false;
-        const matchCls = state.accountFilters.className === 'ALL' || s.class_name === state.accountFilters.className;
-        const q = state.accountFilters.search.toLowerCase().trim();
-        const matchQ = !q || s.name.toLowerCase().includes(q) || s.nisn.toLowerCase().includes(q) || (s.exam_number && s.exam_number.toLowerCase().includes(q));
+        if (!s || s.is_archived) return false;
+        const sClass = String(s.class_name || '');
+        const sName = String(s.name || '');
+        const sNisn = String(s.nisn || '');
+        const sExamNo = String(s.exam_number || '');
+        const matchCls = state.accountFilters.className === 'ALL' || sClass === state.accountFilters.className;
+        const q = String(state.accountFilters.search || '').toLowerCase().trim();
+        const matchQ = !q || sName.toLowerCase().includes(q) || sNisn.toLowerCase().includes(q) || sExamNo.toLowerCase().includes(q);
         return matchCls && matchQ;
       });
 
       const cfg = state.cardConfig || defaultCardConfig;
+      const logoLeftSrc = getCardImageSrc('logo_left');
+      const logoRightSrc = getCardImageSrc('logo_right');
+      const signatureSrc = getCardImageSrc('principal_signature');
+
+      // Batasi pratinjau kartu di layar (default 24 kartu) agar 380+ siswa tidak membuat layar hitam/berat, namun saat cetak tetap mencetak seluruh siswa terfilter
+      const PREVIEW_LIMIT = 24;
+      const previewCardsList = state.showAllCardsPreview ? activeList : activeList.slice(0, PREVIEW_LIMIT);
 
       container.innerHTML = `
         <div class="space-y-6 no-print">
@@ -1981,7 +2099,7 @@
               <button onclick="window.app.exportAccountsExcel()" class="btn-3d px-3.5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">
                 <i class="fa-solid fa-file-excel mr-1.5"></i>Ekspor Akun
               </button>
-              <button onclick="window.print()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md">
+              <button onclick="window.app.printKtpCards()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md">
                 <i class="fa-solid fa-print mr-1.5"></i>Cetak Kartu Ukuran KTP (${activeList.length})
               </button>
             </div>
@@ -2025,9 +2143,9 @@
                   <div class="p-2.5 rounded-xl bg-white border border-slate-200">
                     <label class="block text-[10px] font-extrabold text-slate-700 mb-1">Logo Dinas/Kementerian (Kiri)</label>
                     <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onchange="window.app.handleCardLogoUpload(event, 'logo_left')" class="w-full text-[10px] text-slate-500 file:mr-1.5 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-bold" />
-                    ${cfg.logo_left ? `
+                    ${logoLeftSrc ? `
                       <div class="mt-2 flex items-center justify-between">
-                        <img src="${cfg.logo_left}" class="h-8 w-8 object-contain border rounded p-0.5" />
+                        <img src="${logoLeftSrc}" class="h-8 w-8 object-contain border rounded p-0.5" />
                         <button type="button" onclick="window.app.clearCardLogo('logo_left')" class="text-[10px] text-rose-600 font-bold hover:underline">Hapus</button>
                       </div>
                     ` : `<div class="text-[10px] text-slate-400 mt-1">Format JPG/PNG</div>`}
@@ -2036,9 +2154,9 @@
                   <div class="p-2.5 rounded-xl bg-white border border-slate-200">
                     <label class="block text-[10px] font-extrabold text-slate-700 mb-1">Logo Sekolah (Kanan)</label>
                     <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onchange="window.app.handleCardLogoUpload(event, 'logo_right')" class="w-full text-[10px] text-slate-500 file:mr-1.5 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 file:font-bold" />
-                    ${cfg.logo_right ? `
+                    ${logoRightSrc ? `
                       <div class="mt-2 flex items-center justify-between">
-                        <img src="${cfg.logo_right}" class="h-8 w-8 object-contain border rounded p-0.5" />
+                        <img src="${logoRightSrc}" class="h-8 w-8 object-contain border rounded p-0.5" />
                         <button type="button" onclick="window.app.clearCardLogo('logo_right')" class="text-[10px] text-rose-600 font-bold hover:underline">Hapus</button>
                       </div>
                     ` : `<div class="text-[10px] text-slate-400 mt-1">Format JPG/PNG</div>`}
@@ -2077,7 +2195,7 @@
                 </div>
                 <div>
                   <label class="block text-[11px] font-bold text-slate-600 mb-1">Tempat dan Tanggal Cetak Kartu</label>
-                  <input type="text" id="card-city-date" value="${escapeHtml(cfg.city_date)}" oninput="window.app.updateCardField('city_date', this.value)" placeholder="Contoh: Jakarta, 24 Oktober 2026" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs" />
+                  <input type="text" id="card-city-date" value="${escapeHtml(cfg.city_date)}" oninput="window.app.updateCardField('city_date', this.value)" placeholder="Contoh: Jakarta, 24-10-2026" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs" />
                 </div>
                 <div>
                   <label class="block text-[11px] font-bold text-slate-600 mb-1">Nama Kepala Sekolah</label>
@@ -2090,9 +2208,9 @@
                 <div class="p-2.5 rounded-xl bg-white border border-slate-200">
                   <label class="block text-[10px] font-extrabold text-slate-700 mb-1">Upload Tanda Tangan Kepala Sekolah (JPG/PNG)</label>
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onchange="window.app.handleCardLogoUpload(event, 'principal_signature')" class="w-full text-[10px] text-slate-500 file:mr-1.5 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-bold" />
-                  ${cfg.principal_signature ? `
+                  ${signatureSrc ? `
                     <div class="mt-2 flex items-center justify-between">
-                      <img src="${cfg.principal_signature}" alt="TTD Kepsek" class="h-9 object-contain border rounded px-1 bg-slate-50" />
+                      <img src="${signatureSrc}" alt="TTD Kepsek" class="h-9 object-contain border rounded px-1 bg-slate-50" />
                       <button type="button" onclick="window.app.clearCardLogo('principal_signature')" class="text-[10px] text-rose-600 font-bold hover:underline">Hapus TTD</button>
                     </div>
                   ` : `<div class="text-[10px] text-slate-400 mt-1">Disarankan PNG transparan / JPG bersih</div>`}
@@ -2105,16 +2223,16 @@
           <div class="glass-card p-4 rounded-2xl flex flex-col sm:flex-row gap-3 justify-between">
             <input type="text" value="${escapeHtml(state.accountFilters.search)}" oninput="window.app.updateAccountFilter('search', this.value)" placeholder="Cari Nama, NISN, atau Nomor Ujian..." class="flex-1 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs" />
             <select onchange="window.app.updateAccountFilter('className', this.value)" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold">
-              <option value="ALL">Semua Kelas</option>
+              <option value="ALL">Semua Kelas (${state.students.filter(s => s && !s.is_archived).length} Siswa)</option>
               ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${state.accountFilters.className === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
             </select>
           </div>
 
           <!-- Tabel Akun Peserta (Password Disembunyikan / Masked) -->
           <div class="glass-card rounded-2xl p-5">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
               <table class="w-full text-left border-collapse text-xs sm:text-sm">
-                <thead>
+                <thead class="sticky top-0 bg-white z-10">
                   <tr class="border-b border-slate-200 text-slate-500 uppercase text-[11px]">
                     <th class="py-3 px-3">Nomor Ujian</th>
                     <th class="py-3 px-3">Nama Peserta</th>
@@ -2128,12 +2246,14 @@
                 <tbody class="divide-y divide-slate-200/60">
                   ${activeList.map((s, idx) => {
                     const activeFlag = s.is_active !== false && s.can_take_exam !== false;
+                    const safeCls = String(s.class_name || 'VII.1');
+                    const examNo = s.exam_number || ('26-' + safeCls.replace(/\./g, '') + '-' + String(idx + 1).padStart(3, '0'));
                     return `
                       <tr class="hover:bg-blue-50/40 transition">
-                        <td class="py-3 px-3 font-mono font-bold text-slate-700">${escapeHtml(s.exam_number || ('26-' + s.class_name.replace('.', '') + '-' + String(idx + 1).padStart(3, '0')))}</td>
-                        <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(s.name)}</td>
-                        <td class="py-3 px-3">${escapeHtml(s.class_name)}</td>
-                        <td class="py-3 px-3 font-mono text-blue-700 font-bold">${escapeHtml(s.username || s.nisn)}</td>
+                        <td class="py-3 px-3 font-mono font-bold text-slate-700">${escapeHtml(examNo)}</td>
+                        <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(s.name || '-')}</td>
+                        <td class="py-3 px-3">${escapeHtml(safeCls)}</td>
+                        <td class="py-3 px-3 font-mono text-blue-700 font-bold">${escapeHtml(s.username || s.nisn || '-')}</td>
                         <td class="py-3 px-3 font-mono text-slate-400 tracking-widest">••••••••</td>
                         <td class="py-3 px-3">
                           <button onclick="window.app.toggleStudentActive('${s.id}')" class="btn-3d px-3 py-1 rounded-full text-[11px] font-bold ${activeFlag ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">
@@ -2153,18 +2273,28 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-2">
-            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-100">
-              <i class="fa-solid fa-id-card mr-1.5 text-blue-400"></i>Pratinjau Cetak Kartu Peserta Ujian (Ukuran Standar ID Card / KTP: 85.6mm &times; 54mm)
-            </h3>
-            <span class="text-xs text-slate-300">Siap Cetak Kertas A4 (2 Kolom Presisi Ukuran KTP)</span>
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
+            <div>
+              <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-100">
+                <i class="fa-solid fa-id-card mr-1.5 text-blue-400"></i>Pratinjau Cetak Kartu Peserta Ujian (Ukuran Standar ID Card / KTP: 85.6mm &times; 54mm)
+              </h3>
+              <p class="text-xs text-slate-300 mt-0.5">
+                Menampilkan <strong>${previewCardsList.length}</strong> dari <strong>${activeList.length}</strong> kartu di layar agar tetap ringan. Saat tombol <strong>Cetak Kartu Ukuran KTP (${activeList.length})</strong> diklik, seluruh <strong>${activeList.length} kartu</strong> akan dicetak lengkap.
+              </p>
+            </div>
+            ${activeList.length > PREVIEW_LIMIT ? `
+              <button type="button" onclick="window.app.toggleShowAllCardsPreview()" class="btn-3d px-3.5 py-2 rounded-xl bg-white/90 text-slate-800 text-xs font-extrabold shadow">
+                <i class="fa-solid ${state.showAllCardsPreview ? 'fa-compress' : 'fa-expand'} mr-1.5 text-blue-600"></i>
+                ${state.showAllCardsPreview ? `Ringkas Pratinjau (${PREVIEW_LIMIT} Kartu)` : `Tampilkan Semua di Layar (${activeList.length} Kartu)`}
+              </button>
+            ` : ''}
           </div>
         </div>
 
         <!-- AREA CETAK KARTU UJIAN SISWA UKURAN ID CARD / KTP (85.6mm x 54mm) -->
         <div id="print-area" class="mt-3">
           <div class="ktp-card-grid" id="ktp-cards-preview-wrapper">
-            ${renderKtpCardsHtml(activeList, cfg)}
+            ${renderKtpCardsHtml(previewCardsList, cfg)}
           </div>
         </div>
       `;
@@ -2172,8 +2302,12 @@
 
     function renderKtpCardsHtml(studentList, cfg) {
       if (!studentList || studentList.length === 0) {
-        return `<div class="no-print text-xs text-slate-400 py-6">Tidak ada data siswa aktif untuk ditampilkan pada kartu ujian.</div>`;
+        return `<div class="no-print text-xs text-slate-300 py-6">Tidak ada data siswa aktif untuk ditampilkan pada kartu ujian.</div>`;
       }
+      const logoLeftSrc = getCardImageSrc('logo_left');
+      const logoRightSrc = getCardImageSrc('logo_right');
+      const signatureSrc = getCardImageSrc('principal_signature');
+
       return studentList.map((s) => {
         const passText = s.password || 'siswa123';
         return `
@@ -2182,8 +2316,8 @@
             <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1.2px solid #0f172a; padding-bottom:1.2mm; gap:1.5mm;">
               <!-- Logo Dinas / Kementerian Sebelah Kiri -->
               <div style="width:8.5mm; height:8.5mm; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                ${cfg.logo_left
-                  ? `<img src="${cfg.logo_left}" alt="Logo Dinas" style="max-width:8.5mm; max-height:8.5mm; object-fit:contain;" />`
+                ${logoLeftSrc
+                  ? `<img src="${logoLeftSrc}" alt="Logo Dinas" style="max-width:8.5mm; max-height:8.5mm; object-fit:contain;" />`
                   : `<div style="width:7.5mm; height:7.5mm; border:0.5px dashed #94a3b8; border-radius:1mm; display:flex; align-items:center; justify-content:center; font-size:4pt; color:#64748b; text-align:center;">LOGO DINAS</div>`
                 }
               </div>
@@ -2203,8 +2337,8 @@
 
               <!-- Logo Sekolah Sebelah Kanan -->
               <div style="width:8.5mm; height:8.5mm; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                ${cfg.logo_right
-                  ? `<img src="${cfg.logo_right}" alt="Logo Sekolah" style="max-width:8.5mm; max-height:8.5mm; object-fit:contain;" />`
+                ${logoRightSrc
+                  ? `<img src="${logoRightSrc}" alt="Logo Sekolah" style="max-width:8.5mm; max-height:8.5mm; object-fit:contain;" />`
                   : `<div style="width:7.5mm; height:7.5mm; border:0.5px dashed #94a3b8; border-radius:1mm; display:flex; align-items:center; justify-content:center; font-size:4pt; color:#64748b; text-align:center;">LOGO SEKOLAH</div>`
                 }
               </div>
@@ -2225,17 +2359,17 @@
               <div style="display:flex;">
                 <span style="width:17mm; font-weight:700; color:#475569;">Nama</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
-                <span style="flex:1; font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name)}</span>
+                <span style="flex:1; font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name || '-')}</span>
               </div>
               <div style="display:flex;">
                 <span style="width:17mm; font-weight:700; color:#475569;">Kelas</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
-                <span style="flex:1; font-weight:700; color:#0f172a;">${escapeHtml(s.class_name)}</span>
+                <span style="flex:1; font-weight:700; color:#0f172a;">${escapeHtml(s.class_name || '-')}</span>
               </div>
               <div style="display:flex;">
                 <span style="width:17mm; font-weight:700; color:#475569;">NISN</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
-                <span style="flex:1; font-family:monospace; font-weight:800; color:#1d4ed8;">${escapeHtml(s.nisn)}</span>
+                <span style="flex:1; font-family:monospace; font-weight:800; color:#1d4ed8;">${escapeHtml(s.nisn || '-')}</span>
               </div>
               <div style="display:flex;">
                 <span style="width:17mm; font-weight:700; color:#475569;">Kata Sandi</span>
@@ -2253,8 +2387,8 @@
               <div style="text-align:left; min-width:38mm;">
                 <div style="color:#334155;">${escapeHtml(cfg.city_date)}</div>
                 <div style="font-weight:700; color:#0f172a;">Kepala Sekolah,</div>
-                ${cfg.principal_signature
-                  ? `<div style="height:4.2mm; display:flex; align-items:center; margin:0.2mm 0;"><img src="${cfg.principal_signature}" alt="TTD" style="max-height:4.2mm; max-width:22mm; object-fit:contain;" /></div>`
+                ${signatureSrc
+                  ? `<div style="height:4.2mm; display:flex; align-items:center; margin:0.2mm 0;"><img src="${signatureSrc}" alt="TTD" style="max-height:4.2mm; max-width:22mm; object-fit:contain;" /></div>`
                   : `<div style="height:2.8mm;"></div>`
                 }
                 <div style="font-weight:800; color:#0f172a; text-decoration:underline;">${escapeHtml(cfg.principal_name)}</div>
@@ -4289,19 +4423,51 @@
         renderApp();
       },
 
+      toggleShowAllCardsPreview() {
+        state.showAllCardsPreview = !state.showAllCardsPreview;
+        renderApp();
+      },
+
+      printKtpCards() {
+        const activeList = state.students.filter(s => {
+          if (!s || s.is_archived) return false;
+          const sClass = String(s.class_name || '');
+          const sName = String(s.name || '');
+          const sNisn = String(s.nisn || '');
+          const sExamNo = String(s.exam_number || '');
+          const matchCls = state.accountFilters.className === 'ALL' || sClass === state.accountFilters.className;
+          const q = String(state.accountFilters.search || '').toLowerCase().trim();
+          const matchQ = !q || sName.toLowerCase().includes(q) || sNisn.toLowerCase().includes(q) || sExamNo.toLowerCase().includes(q);
+          return matchCls && matchQ;
+        });
+
+        const wrapper = document.getElementById('ktp-cards-preview-wrapper');
+        if (wrapper) {
+          wrapper.innerHTML = renderKtpCardsHtml(activeList, state.cardConfig);
+        }
+        setTimeout(() => {
+          window.print();
+        }, 120);
+      },
+
       updateCardField(field, value) {
         state.cardConfig[field] = value;
         try { localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig)); } catch (e) {}
         const wrapper = document.getElementById('ktp-cards-preview-wrapper');
         if (wrapper) {
           const activeList = state.students.filter(s => {
-            if (s.is_archived) return false;
-            const matchCls = state.accountFilters.className === 'ALL' || s.class_name === state.accountFilters.className;
-            const q = state.accountFilters.search.toLowerCase().trim();
-            const matchQ = !q || s.name.toLowerCase().includes(q) || s.nisn.toLowerCase().includes(q) || (s.exam_number && s.exam_number.toLowerCase().includes(q));
+            if (!s || s.is_archived) return false;
+            const sClass = String(s.class_name || '');
+            const sName = String(s.name || '');
+            const sNisn = String(s.nisn || '');
+            const sExamNo = String(s.exam_number || '');
+            const matchCls = state.accountFilters.className === 'ALL' || sClass === state.accountFilters.className;
+            const q = String(state.accountFilters.search || '').toLowerCase().trim();
+            const matchQ = !q || sName.toLowerCase().includes(q) || sNisn.toLowerCase().includes(q) || sExamNo.toLowerCase().includes(q);
             return matchCls && matchQ;
           });
-          wrapper.innerHTML = renderKtpCardsHtml(activeList, state.cardConfig);
+          const previewList = state.showAllCardsPreview ? activeList : activeList.slice(0, 24);
+          wrapper.innerHTML = renderKtpCardsHtml(previewList, state.cardConfig);
         }
       },
 
@@ -4309,10 +4475,11 @@
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (evt) => {
-          state.cardConfig[logoField] = evt.target.result;
+        reader.onload = async (evt) => {
+          const compressed = await compressImageDataUrl(evt.target.result, 240, 240);
+          state.cardConfig[logoField] = compressed;
           try { localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig)); } catch (err) {}
-          showToast('Logo kartu ujian berhasil dimuat. Klik Simpan Desain Kartu untuk menyimpan ke server.', 'success');
+          showToast('Gambar kartu ujian berhasil dimuat & dioptimasi. Klik Simpan Desain Kartu untuk menyimpan ke server.', 'success');
           renderApp();
         };
         reader.readAsDataURL(file);
@@ -4320,6 +4487,10 @@
 
       clearCardLogo(logoField) {
         state.cardConfig[logoField] = '';
+        if (cardBlobUrlCache[logoField]) {
+          if (cardBlobUrlCache[logoField].url) URL.revokeObjectURL(cardBlobUrlCache[logoField].url);
+          cardBlobUrlCache[logoField] = { raw: null, url: '' };
+        }
         try { localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig)); } catch (err) {}
         renderApp();
       },
