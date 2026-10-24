@@ -290,6 +290,10 @@
       remainingSeconds: 0,
       antiCheatAttached: false,
       violationLockout: false,
+      showRulesModal: false,
+      rulesAccepted: false,
+      rulesCheckboxChecked: false,
+      pendingExamIdForRules: null,
 
       // Koleksi Data
       academic_years: [],
@@ -1330,41 +1334,60 @@
             <div>
               <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Data Master &bull; Periode Akademik</span>
               <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Tahun Ajaran & Semester</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Atur periode tahun ajaran yang sedang aktif tanpa mencampur arsip ujian sebelumnya.</p>
+              <p class="text-xs sm:text-sm text-slate-500">Kelola, edit, serta atur status aktif atau nonaktif periode tahun ajaran tanpa mencampur arsip ujian sebelumnya.</p>
             </div>
-            <button onclick="document.getElementById('modal-period').classList.remove('hidden')" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md">
+            <button onclick="window.app.openPeriodModal()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md">
               <i class="fa-solid fa-calendar-plus mr-1.5"></i>Tambah Tahun Ajaran
             </button>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            ${state.academic_years.map(ay => `
-              <div class="glass-card hover-lift p-5 rounded-2xl border-2 ${ay.is_active ? 'border-blue-500' : 'border-transparent'}">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold ${ay.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
-                    ${ay.is_active ? 'PERIODE AKTIF' : 'ARSIP PERIODE'}
-                  </span>
-                  <i class="fa-solid fa-calendar-check text-lg ${ay.is_active ? 'text-blue-600' : 'text-slate-300'}"></i>
-                </div>
-                <h3 class="text-xl font-extrabold text-slate-900">TA ${escapeHtml(ay.year_name)}</h3>
-                <p class="text-xs text-slate-600 mt-1">Semester <strong>${escapeHtml(ay.semester)}</strong></p>
+          ${state.academic_years.length === 0 ? `
+            <div class="glass-card p-10 rounded-2xl text-center text-slate-400 text-sm">
+              Belum ada data Tahun Ajaran & Semester. Klik <strong>Tambah Tahun Ajaran</strong> di kanan atas.
+            </div>
+          ` : `
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              ${state.academic_years.map(ay => `
+                <div class="glass-card hover-lift p-5 rounded-2xl border-2 ${ay.is_active ? 'border-blue-500' : 'border-transparent'} flex flex-col justify-between">
+                  <div>
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                      <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold ${ay.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}">
+                        ${ay.is_active ? 'PERIODE AKTIF' : 'NONAKTIF / ARSIP'}
+                      </span>
+                      <!-- Tombol Saklar Aktif / Nonaktif -->
+                      <button onclick="window.app.toggleAcademicPeriodStatus('${ay.id}')" class="btn-3d px-3 py-1 rounded-full text-xs font-extrabold flex items-center gap-1.5 ${ay.is_active ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' : 'bg-slate-200 text-slate-700'}">
+                        <i class="fa-solid ${ay.is_active ? 'fa-toggle-on text-sm' : 'fa-toggle-off text-sm'}"></i>
+                        <span>${ay.is_active ? 'Aktif' : 'Nonaktif'}</span>
+                      </button>
+                    </div>
+                    <h3 class="text-xl font-extrabold text-slate-900">TA ${escapeHtml(ay.year_name)}</h3>
+                    <p class="text-xs text-slate-600 mt-1">Semester <strong>${escapeHtml(ay.semester)}</strong></p>
+                  </div>
 
-                <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center">
-                  ${!ay.is_active ? `
-                    <button onclick="window.app.activateAcademicPeriod('${ay.id}')" class="btn-3d px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold">
-                      Aktifkan Periode Ini
-                    </button>
-                  ` : `<span class="text-xs font-bold text-blue-600"><i class="fa-solid fa-circle-check mr-1"></i>Sedang Digunakan</span>`}
+                  <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center gap-2">
+                    <span class="text-[11px] font-bold ${ay.is_active ? 'text-blue-600' : 'text-slate-400'}">
+                      <i class="fa-solid ${ay.is_active ? 'fa-circle-check' : 'fa-clock-rotate-left'} mr-1"></i>${ay.is_active ? 'Sedang Digunakan' : 'Arsip Periode'}
+                    </span>
+                    <div class="flex items-center gap-1.5">
+                      <button onclick="window.app.openPeriodModal('${ay.id}')" class="btn-3d px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-bold">
+                        <i class="fa-solid fa-pen mr-1"></i>Edit
+                      </button>
+                      <button onclick="window.app.deleteAcademicPeriod('${ay.id}')" class="btn-3d px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold" title="Hapus Periode">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            `).join('')}
-          </div>
+              `).join('')}
+            </div>
+          `}
         </div>
 
         <div id="modal-period" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div class="glass-card bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl">
-            <h3 class="text-lg font-extrabold text-slate-900 mb-4">Tambah Periode Tahun Ajaran</h3>
+            <h3 id="modal-period-title" class="text-lg font-extrabold text-slate-900 mb-4">Tambah Periode Tahun Ajaran</h3>
             <form onsubmit="window.app.saveAcademicPeriod(event)" class="space-y-3.5">
+              <input type="hidden" id="form-period-id" />
               <div>
                 <label class="block text-xs font-bold text-slate-600 mb-1">Tahun Ajaran</label>
                 <input type="text" id="form-period-year" required placeholder="Contoh: 2026/2027" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
@@ -1375,6 +1398,12 @@
                   <option value="Ganjil">Semester Ganjil</option>
                   <option value="Genap">Semester Genap</option>
                 </select>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <label class="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" id="form-period-active" class="w-4 h-4 text-blue-600 rounded" />
+                  <span class="text-xs font-bold text-slate-700">Jadikan Sebagai Periode Aktif</span>
+                </label>
               </div>
               <div class="flex justify-end gap-2 pt-2">
                 <button type="button" onclick="document.getElementById('modal-period').classList.add('hidden')" class="btn-3d px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
@@ -2192,7 +2221,7 @@
         <div class="min-h-screen p-4 sm:p-6 max-w-3xl mx-auto flex flex-col justify-between">
           <div>
             <!-- Header Identitas Peserta -->
-            <div class="glass-card rounded-3xl p-5 mb-6 flex items-center justify-between">
+            <div class="glass-card rounded-3xl p-5 mb-6 flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-3.5">
                 <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-extrabold text-lg shadow-md">
                   <i class="fa-solid fa-user-graduate"></i>
@@ -2202,9 +2231,14 @@
                   <p class="text-xs text-slate-500">NISN: <strong class="font-mono text-blue-700">${escapeHtml(std.nisn)}</strong> &bull; Kelas: <strong>${escapeHtml(std.class_name)}</strong></p>
                 </div>
               </div>
-              <button onclick="window.app.logout()" class="btn-3d px-3.5 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold">
-                <i class="fa-solid fa-power-off mr-1"></i>Keluar
-              </button>
+              <div class="flex items-center gap-2">
+                <button onclick="window.app.openRulesModal()" class="btn-3d px-3.5 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
+                  <i class="fa-solid fa-clipboard-list mr-1"></i>Tata Tertib
+                </button>
+                <button onclick="window.app.logout()" class="btn-3d px-3.5 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold">
+                  <i class="fa-solid fa-power-off mr-1"></i>Keluar
+                </button>
+              </div>
             </div>
 
             <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-500 mb-3">Daftar Jadwal Ujian Aktif Anda</h3>
@@ -2257,119 +2291,48 @@
           </div>
           <p class="text-center text-[11px] text-slate-400 mt-8">Mode Keamanan Exambro Smartphone Aktif</p>
         </div>
-      `;
-    }
 
-    function renderStudentExamSheet(root) {
-      const q = state.activeQuestions[state.currentQuestionIndex];
-      const answers = state.activeSession?.answers || {};
-      // Jawaban disimpan berdasarkan kunci asli (origKey: 'A'|'B'|'C'|'D') agar meskipun opsi diacak, penilaian tetap 100% akurat
-      const selectedOrigKey = q ? answers[q.id] : null;
-      const mins = String(Math.floor(state.remainingSeconds / 60)).padStart(2, '0');
-      const secs = String(state.remainingSeconds % 60).padStart(2, '0');
-
-      const displayOptions = q?.displayOptions || [
-        { displayLetter: 'A', origKey: 'A', text: q?.option_a },
-        { displayLetter: 'B', origKey: 'B', text: q?.option_b },
-        { displayLetter: 'C', origKey: 'C', text: q?.option_c },
-        { displayLetter: 'D', origKey: 'D', text: q?.option_d }
-      ];
-
-      root.innerHTML = `
-        <div id="exam-protected-container" class="exam-protected min-h-screen flex flex-col justify-between p-3 sm:p-5 max-w-4xl mx-auto select-none">
-          <!-- Top Bar Exambro -->
-          <div class="glass-card rounded-2xl p-3.5 mb-3 flex items-center justify-between">
-            <div>
-              <div class="text-xs font-extrabold text-blue-600 uppercase">${escapeHtml(state.activeExam.subject)}</div>
-              <div class="text-xs text-slate-600 font-bold truncate max-w-[180px] sm:max-w-xs">${escapeHtml(state.currentUser.name)} (${escapeHtml(state.currentUser.class_name)})</div>
+        <!-- POP-UP MODAL TATA TERTIB UJIAN SAAT SISWA LOGIN -->
+        <div id="modal-exam-rules" class="${state.showRulesModal ? 'flex' : 'hidden'} fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div class="glass-card bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl border border-blue-100 my-auto max-h-[92vh] flex flex-col justify-between">
+            <!-- Header Tata Tertib -->
+            <div class="text-center border-b border-slate-200 pb-4 mb-4">
+              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center mx-auto mb-2.5 shadow-md shadow-blue-500/30">
+                <i class="fa-solid fa-scale-balanced text-xl"></i>
+              </div>
+              <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight uppercase">TATA TERTIB UJIAN</h2>
+              <p class="text-xs sm:text-sm font-bold text-blue-600 mt-0.5">Asesmen Sumatif Semester Ganjil</p>
+              <p class="text-xs font-extrabold text-slate-700">SMP Negeri 1 Pasemah Air Keruh</p>
             </div>
-            <div class="flex items-center gap-2">
-              <div class="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold">
-                <i class="fa-solid fa-triangle-exclamation mr-1"></i>${state.activeSession.violation_count}/${state.activeExam.max_violations || 3}
-              </div>
-              <div class="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white font-mono font-extrabold text-sm">
-                <i class="fa-regular fa-clock mr-1 text-blue-400"></i><span id="exam-timer-display">${mins}:${secs}</span>
-              </div>
+
+            <!-- Isi Tata Tertib (Scrollable) -->
+            <div class="overflow-y-auto pr-1 space-y-2.5 text-xs sm:text-sm text-slate-700 leading-relaxed">
+              <p class="font-bold text-slate-800">Sebelum memulai ujian, baca dan patuhi ketentuan berikut:</p>
+              <ol class="list-decimal list-outside pl-5 space-y-2">
+                <li><strong>Periksa identitas dan mata pelajaran.</strong> Pastikan nama, kelas, serta ujian yang dipilih sudah benar.</li>
+                <li><strong>Siapkan perangkat.</strong> Pastikan baterai cukup dan koneksi internet stabil.</li>
+                <li><strong>Kerjakan secara mandiri dan jujur.</strong> Dilarang bekerja sama, menyontek, membuka catatan, atau menggunakan bantuan pihak lain.</li>
+                <li><strong>Tetap di halaman ujian.</strong> Dilarang membuka aplikasi, tab, atau situs lain selama ujian berlangsung, kecuali atas arahan pengawas.</li>
+                <li><strong>Jaga kerahasiaan soal.</strong> Dilarang memotret, merekam, mengambil tangkapan layar, atau menyebarkan soal ujian.</li>
+                <li><strong>Perhatikan waktu.</strong> Baca soal dengan teliti dan selesaikan ujian sesuai waktu yang tersedia.</li>
+                <li><strong>Laporkan kendala kepada pengawas.</strong> Jika terjadi gangguan perangkat atau koneksi, jangan melakukan tindakan sendiri tanpa arahan.</li>
+                <li><strong>Periksa jawaban sebelum mengirim.</strong> Klik Selesai/Kirim Jawaban setelah yakin, lalu pastikan muncul konfirmasi bahwa jawaban berhasil dikirim.</li>
+                <li><strong>Jaga ketertiban.</strong> Pelanggaran tata tertib akan ditindaklanjuti sesuai ketentuan sekolah.</li>
+              </ol>
             </div>
-          </div>
 
-          <!-- Kartu Soal Utama -->
-          ${!q ? `
-            <div class="glass-card rounded-3xl p-8 text-center text-slate-500">Soal belum tersedia pada jadwal ujian ini.</div>
-          ` : `
-            <div class="glass-card rounded-3xl p-5 sm:p-7 flex-1 flex flex-col justify-between">
-              <div>
-                <div class="flex items-center justify-between mb-4">
-                  <span class="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold">
-                    SOAL NOMOR ${state.currentQuestionIndex + 1} DARI ${state.activeQuestions.length}
-                  </span>
-                  <button onclick="window.app.toggleDoubtful('${q.id}')" class="btn-3d px-3 py-1.5 rounded-xl text-xs font-bold ${state.doubtfulQuestions[q.id] ? 'bg-amber-400 text-slate-900' : 'bg-slate-100 text-slate-600'}">
-                    <i class="fa-solid fa-flag mr-1"></i>Ragu-ragu
-                  </button>
-                </div>
+            <!-- Persetujuan & Tombol Mulai Ujian -->
+            <div class="pt-4 mt-4 border-t border-slate-200 space-y-3">
+              <label for="rules-consent-checkbox" class="flex items-start gap-3 p-3 rounded-2xl bg-blue-50/90 border border-blue-200 cursor-pointer select-none hover:bg-blue-100/60 transition">
+                <input type="checkbox" id="rules-consent-checkbox" ${state.rulesCheckboxChecked ? 'checked' : ''} onchange="window.app.toggleRulesCheckbox(this.checked)" class="mt-0.5 w-5 h-5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0" />
+                <span class="text-xs sm:text-sm font-bold text-slate-800 leading-snug">
+                  Saya telah membaca dan memahami tata tertib serta bersedia mengerjakan ujian dengan jujur.
+                </span>
+              </label>
 
-                <div class="text-sm sm:text-base font-semibold text-slate-900 leading-relaxed whitespace-pre-line mb-4">${escapeHtml(q.question_text)}</div>
-
-                ${q.image_url ? `
-                  <div class="mb-4">
-                    <img src="${q.image_url}" alt="Ilustrasi Soal" class="max-h-64 rounded-2xl border border-slate-200 mx-auto object-contain" />
-                  </div>
-                ` : ''}
-
-                <!-- Pilihan Jawaban ABCD (Mendukung Acak Opsi) -->
-                <div class="space-y-2.5 mt-4">
-                  ${displayOptions.map(optObj => {
-                    const isPicked = selectedOrigKey === optObj.origKey;
-                    return `
-                      <button type="button" onclick="window.app.selectAnswer('${q.id}', '${optObj.origKey}')" class="hover-lift w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition flex items-center gap-3.5 ${isPicked ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-600/25' : 'bg-white text-slate-800 border-slate-200 hover:border-blue-400'}">
-                        <span class="w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-xs ${isPicked ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-700'}">${optObj.displayLetter}</span>
-                        <span class="text-xs sm:text-sm font-semibold flex-1">${escapeHtml(optObj.text)}</span>
-                      </button>
-                    `;
-                  }).join('')}
-                </div>
-              </div>
-
-              <!-- Navigasi Sebelumnya / Selanjutnya -->
-              <div class="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-slate-200/80">
-                <button onclick="window.app.navigateQuestion(-1)" ${state.currentQuestionIndex === 0 ? 'disabled' : ''} class="btn-3d px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-40">
-                  <i class="fa-solid fa-arrow-left mr-1.5"></i>Sebelumnya
-                </button>
-
-                ${state.currentQuestionIndex < state.activeQuestions.length - 1 ? `
-                  <button onclick="window.app.navigateQuestion(1)" class="btn-3d px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold">
-                    Selanjutnya<i class="fa-solid fa-arrow-right ml-1.5"></i>
-                  </button>
-                ` : `
-                  <button onclick="window.app.confirmSubmitExam()" class="btn-3d px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30">
-                    <i class="fa-solid fa-paper-plane mr-1.5"></i>Selesai & Kirim Jawaban
-                  </button>
-                `}
-              </div>
-            </div>
-          `}
-
-          <!-- Grid Nomor Soal -->
-          <div class="glass-card rounded-2xl p-3.5 mt-3">
-            <div class="text-[11px] font-bold text-slate-500 mb-2">Navigasi Nomor Soal:</div>
-            <div class="flex flex-wrap gap-1.5">
-              ${state.activeQuestions.map((item, idx) => {
-                const answered = answers[item.id];
-                const doubtful = state.doubtfulQuestions[item.id];
-                const isCurr = idx === state.currentQuestionIndex;
-                const cls = isCurr
-                  ? 'ring-2 ring-blue-600 bg-blue-600 text-white'
-                  : doubtful
-                  ? 'bg-amber-400 text-slate-900'
-                  : answered
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-white border border-slate-200 text-slate-700';
-                return `
-                  <button onclick="window.app.jumpToQuestion(${idx})" class="btn-3d w-9 h-9 rounded-xl text-xs font-extrabold flex items-center justify-center ${cls}">
-                    ${idx + 1}
-                  </button>
-                `;
-              }).join('')}
+              <button type="button" id="btn-accept-rules" onclick="window.app.confirmRulesAndProceed()" ${state.rulesCheckboxChecked ? '' : 'disabled'} class="btn-3d w-full py-3.5 rounded-2xl font-extrabold text-sm tracking-wide transition-all ${state.rulesCheckboxChecked ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}">
+                <i class="fa-solid fa-circle-play mr-2"></i>MULAI UJIAN
+              </button>
             </div>
           </div>
         </div>
@@ -2516,6 +2479,10 @@
           }
           state.role = 'student';
           state.currentUser = std;
+          state.showRulesModal = true;
+          state.rulesAccepted = false;
+          state.rulesCheckboxChecked = false;
+          state.pendingExamIdForRules = null;
           renderApp();
           return;
         }
@@ -2547,6 +2514,10 @@
 
           state.role = 'student';
           state.currentUser = std;
+          state.showRulesModal = true;
+          state.rulesAccepted = false;
+          state.rulesCheckboxChecked = false;
+          state.pendingExamIdForRules = null;
           renderApp();
         } catch (err) {
           showToast('Gagal menghubungi server ujian: ' + err.message, 'error');
@@ -2564,6 +2535,10 @@
         state.role = null;
         state.currentUser = null;
         state.activeExam = null;
+        state.showRulesModal = false;
+        state.rulesAccepted = false;
+        state.rulesCheckboxChecked = false;
+        state.pendingExamIdForRules = null;
         renderApp();
       },
 
@@ -2980,19 +2955,99 @@
       },
 
       // ----------------- MANAJEMEN TAHUN AJARAN & SEMESTER -----------------
+      openPeriodModal(id = null) {
+        const modal = document.getElementById('modal-period');
+        modal.classList.remove('hidden');
+        if (id) {
+          const ay = state.academic_years.find(x => x.id === id);
+          if (!ay) return;
+          document.getElementById('modal-period-title').textContent = 'Edit Tahun Ajaran & Semester';
+          document.getElementById('form-period-id').value = ay.id;
+          document.getElementById('form-period-year').value = ay.year_name || '';
+          document.getElementById('form-period-semester').value = ay.semester || 'Ganjil';
+          document.getElementById('form-period-active').checked = !!ay.is_active;
+        } else {
+          document.getElementById('modal-period-title').textContent = 'Tambah Periode Tahun Ajaran';
+          document.getElementById('form-period-id').value = '';
+          document.getElementById('form-period-year').value = '';
+          document.getElementById('form-period-semester').value = 'Ganjil';
+          document.getElementById('form-period-active').checked = false;
+        }
+      },
+
       async saveAcademicPeriod(e) {
         e.preventDefault();
+        const id = document.getElementById('form-period-id').value;
         const year_name = document.getElementById('form-period-year').value.trim();
         const semester = document.getElementById('form-period-semester').value;
+        const is_active = document.getElementById('form-period-active').checked;
 
         if (IS_PREVIEW) {
-          state.academic_years.push({ id: 'ay-' + Date.now(), year_name, semester, is_active: false });
+          if (is_active) {
+            state.academic_years.forEach(a => { a.is_active = false; });
+          }
+          if (id) {
+            const idx = state.academic_years.findIndex(a => a.id === id);
+            if (idx !== -1) state.academic_years[idx] = { ...state.academic_years[idx], year_name, semester, is_active };
+          } else {
+            state.academic_years.unshift({ id: 'ay-' + Date.now(), year_name, semester, is_active });
+          }
         } else {
-          await supabase.from('academic_years').insert([{ year_name, semester, is_active: false }]);
+          if (is_active) {
+            await supabase.from('academic_years').update({ is_active: false }).neq('id', id || '00000000-0000-0000-0000-000000000000');
+          }
+          if (id) {
+            const { error } = await supabase.from('academic_years').update({ year_name, semester, is_active }).eq('id', id);
+            if (error) return showToast('Gagal memperbarui periode: ' + error.message, 'error');
+          } else {
+            const { error } = await supabase.from('academic_years').insert([{ year_name, semester, is_active }]);
+            if (error) return showToast('Gagal menambah periode: ' + error.message, 'error');
+          }
           await loadAllAdminData();
         }
         document.getElementById('modal-period').classList.add('hidden');
-        showToast('Tahun ajaran ditambahkan', 'success');
+        showToast(id ? 'Tahun ajaran & semester berhasil diperbarui' : 'Tahun ajaran baru berhasil ditambahkan', 'success');
+        renderApp();
+      },
+
+      async toggleAcademicPeriodStatus(id) {
+        const ay = state.academic_years.find(a => a.id === id);
+        if (!ay) return;
+        const nextStatus = !ay.is_active;
+
+        if (IS_PREVIEW) {
+          if (nextStatus) {
+            state.academic_years.forEach(a => { a.is_active = (a.id === id); });
+          } else {
+            ay.is_active = false;
+          }
+        } else {
+          if (nextStatus) {
+            await supabase.from('academic_years').update({ is_active: false }).neq('id', id);
+          }
+          const { error } = await supabase.from('academic_years').update({ is_active: nextStatus }).eq('id', id);
+          if (error) return showToast('Gagal mengubah status periode: ' + error.message, 'error');
+          await loadAllAdminData();
+        }
+        showToast(`Periode TA ${ay.year_name} (${ay.semester}) ${nextStatus ? 'DIAKTIFKAN' : 'DINONAKTIFKAN'}`, nextStatus ? 'success' : 'warning');
+        renderApp();
+      },
+
+      async activateAcademicPeriod(id) {
+        await window.app.toggleAcademicPeriodStatus(id);
+      },
+
+      async deleteAcademicPeriod(id) {
+        const ay = state.academic_years.find(a => a.id === id);
+        if (!ay) return;
+        if (IS_PREVIEW) {
+          state.academic_years = state.academic_years.filter(a => a.id !== id);
+        } else {
+          const { error } = await supabase.from('academic_years').delete().eq('id', id);
+          if (error) return showToast('Gagal menghapus periode: ' + error.message, 'error');
+          await loadAllAdminData();
+        }
+        showToast(`Periode TA ${ay.year_name} dihapus`, 'info');
         renderApp();
       },
 
@@ -3551,7 +3606,42 @@
       },
 
       // ----------------- ALUR PENGERJAAN UJIAN SISWA (MENDUKUNG ACAK SOAL & ACAK OPSI) -----------------
+      openRulesModal(examId = null) {
+        state.pendingExamIdForRules = examId;
+        state.showRulesModal = true;
+        renderApp();
+      },
+
+      toggleRulesCheckbox(checked) {
+        state.rulesCheckboxChecked = !!checked;
+        const btn = document.getElementById('btn-accept-rules');
+        if (btn) {
+          btn.disabled = !state.rulesCheckboxChecked;
+          btn.className = `btn-3d w-full py-3.5 rounded-2xl font-extrabold text-sm tracking-wide transition-all ${state.rulesCheckboxChecked ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`;
+        }
+      },
+
+      async confirmRulesAndProceed() {
+        if (!state.rulesCheckboxChecked) return;
+        state.rulesAccepted = true;
+        state.showRulesModal = false;
+        const targetExamId = state.pendingExamIdForRules;
+        state.pendingExamIdForRules = null;
+
+        if (targetExamId) {
+          await window.app.startStudentExam(targetExamId);
+        } else {
+          showToast('Tata tertib telah disetujui. Silakan pilih jadwal ujian Anda.', 'success');
+          renderApp();
+        }
+      },
+
       async startStudentExam(examId) {
+        if (!state.rulesAccepted) {
+          window.app.openRulesModal(examId);
+          return;
+        }
+
         const ex = state.exams.find(e => e.id === examId);
         if (!ex) return;
 
