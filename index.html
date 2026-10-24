@@ -1391,7 +1391,7 @@
               </button>
               <label class="btn-3d cursor-pointer px-3.5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm">
                 <i class="fa-solid fa-file-excel mr-1.5"></i>Impor Excel/CSV
-                <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="window.app.importStudentsExcel(event)" />
+                <input type="file" id="input-import-students" accept=".xlsx,.xls,.csv" class="hidden" onchange="window.app.importStudentsExcel(event)" />
               </label>
               <button onclick="window.app.openStudentModal()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md shadow-blue-600/20">
                 <i class="fa-solid fa-user-plus mr-1.5"></i>Tambah Siswa
@@ -1399,7 +1399,15 @@
             </div>
           </div>
 
-          <!-- Bar Pencarian, Filter Kelas & Aktivasi Massal -->
+          <!-- Informasi Panduan Singkat Impor Excel Siswa -->
+          <div class="glass-card px-4 py-3 rounded-2xl bg-blue-50/90 border border-blue-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-blue-900">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-circle-info text-blue-600 text-sm"></i>
+              <span><strong>Tips Impor Siswa:</strong> Unduh <em>Template Excel</em> terlebih dahulu, isi kolom <strong>NISN, NAMA_LENGKAP, JENIS_KELAMIN (L/P), KELAS</strong>, lalu unggah kembali melalui tombol <em>Impor Excel/CSV</em>.</span>
+            </div>
+          </div>
+
+          <!-- Bar Pencarian, Filter Kelas & Aktivasi / Hapus Massal -->
           <div class="glass-card p-4 rounded-2xl flex flex-col lg:flex-row gap-3 justify-between items-stretch lg:items-center">
             <div class="flex flex-col sm:flex-row gap-2.5 flex-1">
               <div class="relative flex-1">
@@ -1422,6 +1430,9 @@
               </button>
               <button onclick="window.app.bulkToggleStudents(false)" class="btn-3d px-3 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold">
                 <i class="fa-solid fa-user-slash mr-1"></i>Nonaktifkan Semua
+              </button>
+              <button onclick="window.app.deleteAllStudents()" class="btn-3d px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm">
+                <i class="fa-solid fa-trash-can mr-1.5"></i>Hapus Semua Siswa (${filtered.length})
               </button>
             </div>
           </div>
@@ -1460,12 +1471,15 @@
                               ? '<span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[11px]">Aktif</span>'
                               : '<span class="px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 font-bold text-[11px]">Nonaktif</span>'}
                           </td>
-                          <td class="py-3 px-3 text-right space-x-1">
+                          <td class="py-3 px-3 text-right space-x-1 whitespace-nowrap">
                             <button onclick="window.app.openStudentModal('${s.id}')" class="btn-3d px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold">
                               <i class="fa-solid fa-pen"></i> Edit
                             </button>
                             <button onclick="window.app.toggleArchiveStudent('${s.id}')" class="btn-3d px-2.5 py-1.5 rounded-lg ${s.is_archived ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-700'} text-xs font-bold">
                               <i class="fa-solid ${s.is_archived ? 'fa-box-open' : 'fa-box-archive'}"></i> ${s.is_archived ? 'Pulihkan' : 'Arsipkan'}
+                            </button>
+                            <button onclick="window.app.deleteSingleStudent('${s.id}')" class="btn-3d px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-xs font-bold" title="Hapus Siswa">
+                              <i class="fa-solid fa-trash"></i>
                             </button>
                           </td>
                         </tr>
@@ -3590,64 +3604,281 @@
         renderApp();
       },
 
+      async deleteSingleStudent(id) {
+        const s = state.students.find(x => x.id === id);
+        if (!s) return;
+        const ok = await customConfirm(
+          `PERINGATAN!\n\nApakah Anda yakin ingin menghapus data siswa "${s.name}" (NISN: ${s.nisn}, Kelas: ${s.class_name}) secara permanen?\n\nData yang dihapus tidak dapat dikembalikan.`,
+          'Konfirmasi Hapus Siswa'
+        );
+        if (!ok) return;
+
+        showLoadingPopup('Menghapus Siswa...');
+        try {
+          if (IS_PREVIEW) {
+            state.students = state.students.filter(x => x.id !== id);
+            state.exam_sessions = state.exam_sessions.filter(ses => ses.student_id !== id);
+          } else {
+            const { error } = await supabase.from('students').delete().eq('id', id);
+            if (error) throw error;
+            await loadAllAdminData();
+          }
+          showToast(`Data siswa ${s.name} berhasil dihapus`, 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus siswa: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
+      async deleteAllStudents() {
+        const targetStudents = state.students.filter(s => {
+          const matchStatus = state.studentFilters.archived === 'ARCHIVED' ? s.is_archived : !s.is_archived;
+          const matchClass = state.studentFilters.className === 'ALL' || s.class_name === state.studentFilters.className;
+          const q = state.studentFilters.search.toLowerCase().trim();
+          const matchQuery = !q || s.name.toLowerCase().includes(q) || s.nisn.toLowerCase().includes(q) || (s.username && s.username.toLowerCase().includes(q));
+          return matchStatus && matchClass && matchQuery;
+        });
+
+        if (targetStudents.length === 0) {
+          showToast('Tidak ada data siswa untuk dihapus.', 'warning');
+          return;
+        }
+
+        const scopeLabel = state.studentFilters.className !== 'ALL'
+          ? `seluruh siswa pada Kelas ${state.studentFilters.className} (${targetStudents.length} siswa)`
+          : `SELURUH DATA SISWA (${targetStudents.length} siswa)`;
+
+        const ok = await customConfirm(
+          `PERINGATAN KERAS!\n\nApakah Anda yakin ingin MENGHAPUS ${scopeLabel} secara permanen?\n\nTindakan ini juga akan menghapus riwayat sesi ujian siswa terkait dan TIDAK DAPAT DIBATALKAN!`,
+          'Peringatan Hapus Semua Siswa'
+        );
+        if (!ok) return;
+
+        showLoadingPopup('Menghapus Semua Data Siswa...');
+        try {
+          const targetIds = targetStudents.map(s => s.id);
+          if (IS_PREVIEW) {
+            state.students = state.students.filter(s => !targetIds.includes(s.id));
+            state.exam_sessions = state.exam_sessions.filter(ses => !targetIds.includes(ses.student_id));
+          } else {
+            // Hapus secara bertahap (per 100 ID) agar aman dari batas panjang URL Supabase
+            const chunkSize = 100;
+            for (let i = 0; i < targetIds.length; i += chunkSize) {
+              const batch = targetIds.slice(i, i + chunkSize);
+              const { error } = await supabase.from('students').delete().in('id', batch);
+              if (error) throw error;
+            }
+            await loadAllAdminData();
+          }
+          showToast(`Berhasil menghapus ${targetStudents.length} data siswa secara permanen.`, 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus semua siswa: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
       downloadStudentTemplate() {
-        const ws = XLSX.utils.json_to_sheet([
-          { NISN: '0091122334', NAMA: 'Budi Pratama', JK: 'L', KELAS: 'IX.1', NOMOR_UJIAN: '26-IX1-001' },
-          { NISN: '0095566778', NAMA: 'Siti Aminah', JK: 'P', KELAS: 'IX.2', NOMOR_UJIAN: '26-IX2-002' }
-        ]);
+        const headers = ['NO', 'NISN', 'NAMA_LENGKAP', 'JENIS_KELAMIN', 'KELAS', 'NOMOR_UJIAN'];
+        const sampleRows = [
+          [1, '0091122334', 'Budi Pratama', 'L', 'VII.1', '26-VII1-001'],
+          [2, '0095566778', 'Siti Aminah', 'P', 'VIII.1', '26-VIII1-002'],
+          [3, '0098877665', 'Ahmad Fauzan', 'L', 'IX.1', '26-IX1-003']
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+
+        // Kunci format kolom NISN, KELAS, dan NOMOR_UJIAN sebagai Teks ('@') agar angka 0 di depan NISN tidak hilang di Excel
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        for (let R = 1; R <= range.e.r; ++R) {
+          ['B', 'E', 'F'].forEach(col => {
+            const cellAddress = `${col}${R + 1}`;
+            if (ws[cellAddress]) {
+              ws[cellAddress].t = 's';
+              ws[cellAddress].z = '@';
+            }
+          });
+        }
+
+        // Atur lebar kolom agar rapi dan mudah diisi oleh Admin
+        ws['!cols'] = [
+          { wch: 6 },  // NO
+          { wch: 16 }, // NISN
+          { wch: 32 }, // NAMA_LENGKAP
+          { wch: 16 }, // JENIS_KELAMIN
+          { wch: 12 }, // KELAS
+          { wch: 18 }  // NOMOR_UJIAN
+        ];
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Template_Siswa');
         XLSX.writeFile(wb, 'Template_Impor_Siswa_Exambro.xlsx');
+        showToast('Template Excel Siswa berhasil diunduh!', 'info');
       },
 
       importStudentsExcel(e) {
-        const file = e.target.files[0];
+        const fileInput = e.target;
+        const file = fileInput.files && fileInput.files[0];
         if (!file) return;
+
+        showLoadingPopup('Membaca & Mengimpor File Siswa...');
         const reader = new FileReader();
+
         reader.onload = async (evt) => {
-          const wb = XLSX.read(evt.target.result, { type: 'binary' });
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-          const newStudents = [];
-          let skipped = 0;
+          try {
+            const data = new Uint8Array(evt.target.result);
+            const wb = XLSX.read(data, { type: 'array', raw: false });
+            const firstSheetName = wb.SheetNames[0];
+            const sheet = wb.Sheets[firstSheetName];
 
-          for (const r of rows) {
-            const nisn = String(r.NISN || r.nisn || '').trim();
-            const name = String(r.NAMA || r.Nama || r.name || '').trim();
-            const gender = String(r.JK || r.gender || 'L').trim().toUpperCase();
-            const class_name = String(r.KELAS || r.Kelas || r.class_name || 'IX.1').trim();
-            if (!nisn || !name) continue;
-
-            if (state.students.some(s => s.nisn === nisn) || newStudents.some(s => s.nisn === nisn)) {
-              skipped++;
-              continue;
+            // Baca sebagai matriks baris 2D agar tahan terhadap spasi/perbedaan nama kolom header
+            const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+            if (!matrix || matrix.length === 0) {
+              showToast('File Excel/CSV kosong atau tidak terbaca.', 'warning');
+              return;
             }
-            newStudents.push({
-              nisn,
-              name,
-              gender: gender === 'P' ? 'P' : 'L',
-              class_name,
-              username: nisn,
-              password: 'siswa123',
-              exam_number: String(r.NOMOR_UJIAN || `26-${class_name.replace('.', '')}-${nisn.slice(-3)}`),
-              is_active: true,
-              can_take_exam: true,
-              is_archived: false,
-              academic_year: getActiveAcademicPeriod().year_name
-            });
-          }
 
-          if (newStudents.length > 0) {
+            // Cari baris header secara pintar di 10 baris pertama
+            let headerRowIndex = -1;
+            let colMap = { nisn: -1, name: -1, gender: -1, className: -1, examNum: -1 };
+
+            for (let r = 0; r < Math.min(matrix.length, 10); r++) {
+              const rowCells = matrix[r].map(c => String(c || '').toLowerCase().replace(/[^a-z0-9]/g, ''));
+              const nisnIdx = rowCells.findIndex(c => c === 'nisn' || c.includes('nisn') || c === 'username' || c === 'nis' || c === 'nomorinduk');
+              const nameIdx = rowCells.findIndex(c => c.includes('nama') || c === 'name' || c === 'peserta' || c === 'siswa');
+
+              if (nisnIdx !== -1 && nameIdx !== -1) {
+                headerRowIndex = r;
+                colMap.nisn = nisnIdx;
+                colMap.name = nameIdx;
+                colMap.gender = rowCells.findIndex(c => c === 'jk' || c.includes('kelamin') || c === 'lp' || c === 'gender' || c === 'sex');
+                colMap.className = rowCells.findIndex(c => c.includes('kelas') || c.includes('rombel') || c === 'class');
+                colMap.examNum = rowCells.findIndex(c => c.includes('nomorujian') || c.includes('noujian') || c.includes('nopeserta') || c.includes('nomorpeserta'));
+                break;
+              }
+            }
+
+            // Jika header tidak ditemukan, gunakan urutan kolom standar (A=NISN, B=NAMA, C=JK, D=KELAS atau A=NO, B=NISN, C=NAMA, D=JK, E=KELAS)
+            let startRow = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
+            if (headerRowIndex === -1) {
+              const firstRow = matrix[0] || [];
+              const firstCell = String(firstRow[0] || '').trim();
+              if (/^\d{1,3}$/.test(firstCell) && firstRow.length >= 4) {
+                colMap = { nisn: 1, name: 2, gender: 3, className: 4, examNum: 5 };
+              } else {
+                colMap = { nisn: 0, name: 1, gender: 2, className: 3, examNum: 4 };
+              }
+            }
+
+            // Helper normalisasi penulisan kelas (misal "7.1" -> "VII.1", "Kelas IX-2" -> "IX.2")
+            const normalizeClassName = (rawCls) => {
+              let cl = String(rawCls || '').toUpperCase().trim();
+              if (!cl) return state.classes[0]?.class_name || 'VII.1';
+              cl = cl.replace(/^KELAS\s+/i, '').replace(/\s+/g, '').replace('-', '.');
+              cl = cl.replace(/^7\./, 'VII.').replace(/^8\./, 'VIII.').replace(/^9\./, 'IX.');
+              cl = cl.replace(/^7([1-9])$/, 'VII.$1').replace(/^8([1-9])$/, 'VIII.$1').replace(/^9([1-9])$/, 'IX.$1');
+              return cl;
+            };
+
+            const newStudents = [];
+            let skipped = 0;
+            const activeYear = getActiveAcademicPeriod().year_name;
+
+            for (let r = startRow; r < matrix.length; r++) {
+              const row = matrix[r];
+              if (!row || row.length === 0) continue;
+
+              // Bersihkan tanda kutip atau spasi pada NISN
+              let rawNisn = String(row[colMap.nisn] ?? '').trim().replace(/^['`]+/, '').replace(/\s+/g, '');
+              const name = String(row[colMap.name] ?? '').trim();
+
+              if (!rawNisn || !name) continue;
+              // Lewati jika baris ini masih merupakan teks judul/header
+              if (rawNisn.toLowerCase() === 'nisn' || name.toLowerCase().includes('nama lengkap')) continue;
+
+              // Jika NISN berupa angka 7-9 digit (karena angka 0 di depan terpotong oleh Excel), tambahkan 0 di depan hingga 10 digit
+              if (/^\d{7,9}$/.test(rawNisn)) {
+                rawNisn = rawNisn.padStart(10, '0');
+              }
+
+              // Cek duplikat NISN
+              if (state.students.some(s => s.nisn === rawNisn) || newStudents.some(s => s.nisn === rawNisn)) {
+                skipped++;
+                continue;
+              }
+
+              // Normalisasi Jenis Kelamin (L / P)
+              const rawGender = colMap.gender !== -1 ? String(row[colMap.gender] ?? 'L').trim().toUpperCase() : 'L';
+              const gender = (rawGender.startsWith('P') || rawGender.startsWith('W')) ? 'P' : 'L';
+
+              // Normalisasi Kelas
+              const rawClass = colMap.className !== -1 ? row[colMap.className] : 'VII.1';
+              const class_name = normalizeClassName(rawClass);
+
+              // Nomor Ujian
+              const rawExamNum = colMap.examNum !== -1 ? String(row[colMap.examNum] ?? '').trim() : '';
+              const exam_number = rawExamNum || `26-${class_name.replace(/[^A-Z0-9]/g, '')}-${rawNisn.slice(-3)}`;
+
+              newStudents.push({
+                nisn: rawNisn,
+                name,
+                gender,
+                class_name,
+                username: rawNisn,
+                password: 'siswa123',
+                exam_number,
+                is_active: true,
+                can_take_exam: true,
+                is_archived: false,
+                academic_year: activeYear
+              });
+            }
+
+            if (newStudents.length === 0) {
+              if (skipped > 0) {
+                showToast(`Seluruh siswa pada file (${skipped} siswa) sudah terdaftar di aplikasi.`, 'warning');
+              } else {
+                showToast('Tidak ditemukan data siswa yang valid. Pastikan kolom NISN dan Nama Lengkap terisi.', 'error');
+              }
+              return;
+            }
+
+            // Simpan ke Database Supabase secara bertahap (batch) agar stabil
             if (IS_PREVIEW) {
               newStudents.forEach((ns, i) => state.students.push({ id: 'std-imp-' + Date.now() + '-' + i, ...ns }));
             } else {
-              await supabase.from('students').insert(newStudents);
+              const chunkSize = 100;
+              for (let i = 0; i < newStudents.length; i += chunkSize) {
+                const batch = newStudents.slice(i, i + chunkSize);
+                const { error } = await supabase.from('students').insert(batch);
+                if (error) throw error;
+              }
               await loadAllAdminData();
             }
+
+            showToast(
+              `Berhasil mengimpor ${newStudents.length} siswa baru!` + (skipped > 0 ? ` (${skipped} NISN duplikat dilewati)` : ''),
+              'success'
+            );
+            renderApp();
+          } catch (err) {
+            showToast('Gagal mengimpor file siswa: ' + err.message, 'error');
+          } finally {
+            fileInput.value = '';
+            hideLoadingPopup();
           }
-          showToast(`Berhasil mengimpor ${newStudents.length} siswa (${skipped} duplikat dilewati)`, 'success');
-          renderApp();
         };
-        reader.readAsBinaryString(file);
+
+        reader.onerror = () => {
+          fileInput.value = '';
+          hideLoadingPopup();
+          showToast('Gagal membaca file yang dipilih.', 'error');
+        };
+
+        reader.readAsArrayBuffer(file);
       },
 
       // ----------------- MANAJEMEN DATA KELAS -----------------
