@@ -882,6 +882,57 @@
     }
 
     // ============================================================================
+    //PENYIMPANAN JAWABAN LOKAL (LOCALSTORAGE) AGAR KUAT 380+ SISWA SERENTAK
+    // ============================================================================
+    function getLocalExamStorageKey(sessionId) {
+      return `exambro_local_answers_v1_${sessionId}`;
+    }
+
+    function saveExamProgressLocal() {
+      if (!state.activeSession || !state.activeSession.id) return;
+      try {
+        const payload = {
+          sessionId: state.activeSession.id,
+          examId: state.activeExam?.id || state.activeSession.exam_id,
+          studentId: state.currentUser?.id || state.activeSession.student_id,
+          answers: state.activeSession.answers || {},
+          doubtfulQuestions: state.doubtfulQuestions || {},
+          remainingSeconds: state.remainingSeconds || 0,
+          updatedAt: Date.now()
+        };
+        localStorage.setItem(getLocalExamStorageKey(state.activeSession.id), JSON.stringify(payload));
+      } catch (e) {}
+    }
+
+    function loadExamProgressLocal(session, defaultDurationSeconds) {
+      if (!session || !session.id) {
+        return { answers: session?.answers || {}, doubtfulQuestions: {}, remainingSeconds: defaultDurationSeconds };
+      }
+      try {
+        const raw = localStorage.getItem(getLocalExamStorageKey(session.id));
+        if (!raw) {
+          return { answers: session.answers || {}, doubtfulQuestions: {}, remainingSeconds: defaultDurationSeconds };
+        }
+        const parsed = JSON.parse(raw);
+        const mergedAnswers = { ...(session.answers || {}), ...(parsed.answers || {}) };
+        const doubtfulQuestions = parsed.doubtfulQuestions || {};
+        const remainingSeconds = (typeof parsed.remainingSeconds === 'number' && parsed.remainingSeconds > 0)
+          ? parsed.remainingSeconds
+          : defaultDurationSeconds;
+        return { answers: mergedAnswers, doubtfulQuestions, remainingSeconds };
+      } catch (e) {
+        return { answers: session.answers || {}, doubtfulQuestions: {}, remainingSeconds: defaultDurationSeconds };
+      }
+    }
+
+    function clearExamProgressLocal(sessionId) {
+      if (!sessionId) return;
+      try {
+        localStorage.removeItem(getLocalExamStorageKey(sessionId));
+      } catch (e) {}
+    }
+
+    // ============================================================================
     // SINKRONISASI DATA SUPABASE
     // ============================================================================
     async function loadAllAdminData() {
@@ -3135,6 +3186,7 @@
       const q = state.activeQuestions[state.currentQuestionIndex];
       const answers = state.activeSession?.answers || {};
       const selectedOrigKey = q ? answers[q.id] : null;
+      const answeredCount = Object.keys(answers).length;
       const mins = String(Math.floor(state.remainingSeconds / 60)).padStart(2, '0');
       const secs = String(state.remainingSeconds % 60).padStart(2, '0');
 
@@ -3148,9 +3200,14 @@
       root.innerHTML = `
         <div id="exam-protected-container" class="exam-protected min-h-screen flex flex-col justify-between p-3 sm:p-5 max-w-4xl mx-auto select-none">
           <!-- Top Bar Exambro -->
-          <div class="glass-card rounded-2xl p-3.5 mb-3 flex items-center justify-between">
+          <div class="glass-card rounded-2xl p-3.5 mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div class="text-xs font-extrabold text-blue-600 uppercase">${escapeHtml(state.activeExam.subject)}</div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-extrabold text-blue-600 uppercase">${escapeHtml(state.activeExam.subject)}</span>
+                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-700" title="Jawaban disimpan instan di memori perangkat dan dikirim saat selesai">
+                  <i class="fa-solid fa-bolt"></i> Tersimpan Lokal (${answeredCount}/${state.activeQuestions.length})
+                </span>
+              </div>
               <div class="text-xs text-slate-600 font-bold truncate max-w-[180px] sm:max-w-xs">${escapeHtml(state.currentUser.name)} (${escapeHtml(state.currentUser.class_name)})</div>
             </div>
             <div class="flex items-center gap-2">
@@ -3294,10 +3351,13 @@
       state.activeSession.violation_count = (state.activeSession.violation_count || 0) + 1;
       const maxV = state.activeExam.max_violations || 3;
 
+      saveExamProgressLocal();
+
       if (state.activeSession.violation_count >= maxV) {
         state.activeSession.status = 'blocked';
         if (!IS_PREVIEW && supabase) {
           await supabase.from('exam_sessions').update({
+            answers: state.activeSession.answers || {},
             violation_count: state.activeSession.violation_count,
             status: 'blocked'
           }).eq('id', state.activeSession.id);
@@ -4903,14 +4963,24 @@
         state.activeExam = ex;
         // Terapkan Acak Soal dan/atau Acak Opsi Kunci Jawaban sesuai pengaturan paket ujian
         state.activeQuestions = buildPreparedQuestionsForStudent(rawQuestions, ex, state.currentUser.id);
+
+        // Pulihkan pilihan jawaban & sisa waktu dari penyimpanan lokal perangkat (localStorage) jika ada
+        const defaultDurationSeconds = (ex.duration_minutes || 60) * 60;
+        const localProgress = loadExamProgressLocal(session, defaultDurationSeconds);
+        session.answers = localProgress.answers;
         state.activeSession = session;
+        state.doubtfulQuestions = localProgress.doubtfulQuestions;
         state.currentQuestionIndex = 0;
-        state.remainingSeconds = (ex.duration_minutes || 60) * 60;
+        state.remainingSeconds = localProgress.remainingSeconds;
+        saveExamProgressLocal();
 
         attachAntiCheatListeners();
         if (state.examTimerInterval) clearInterval(state.examTimerInterval);
         state.examTimerInterval = setInterval(() => {
           state.remainingSeconds--;
+          if (state.remainingSeconds % 5 === 0) {
+            saveExamProgressLocal();
+          }
           const timerEl = document.getElementById('exam-timer-display');
           if (timerEl) {
             const m = String(Math.floor(state.remainingSeconds / 60)).padStart(2, '0');
@@ -4927,17 +4997,17 @@
         triggerTransitionShadow();
       },
 
-      async selectAnswer(questionId, origOptionLetter) {
+      selectAnswer(questionId, origOptionLetter) {
         if (!state.activeSession) return;
+        // Simpan instan ke memori & localStorage perangkat siswa (tanpa request ke Supabase per klik)
         state.activeSession.answers = { ...state.activeSession.answers, [questionId]: origOptionLetter };
-        if (!IS_PREVIEW && supabase) {
-          await supabase.from('exam_sessions').update({ answers: state.activeSession.answers }).eq('id', state.activeSession.id);
-        }
+        saveExamProgressLocal();
         renderApp();
       },
 
       toggleDoubtful(questionId) {
         state.doubtfulQuestions[questionId] = !state.doubtfulQuestions[questionId];
+        saveExamProgressLocal();
         renderApp();
       },
 
@@ -4975,19 +5045,37 @@
         });
         const total = state.activeQuestions.length || 1;
         const score = Math.round((correct / total) * 100);
+        const submittedAt = new Date().toISOString();
+
+        // Simpan ke localStorage terlebih dahulu sebagai cadangan aman
+        saveExamProgressLocal();
+
+        if (!IS_PREVIEW && supabase) {
+          showLoadingPopup('Mengirim Jawaban Ujian ke Server...');
+          try {
+            const { error } = await supabase.from('exam_sessions').update({
+              answers,
+              score,
+              status: 'completed',
+              submitted_at: submittedAt
+            }).eq('id', state.activeSession.id);
+
+            if (error) throw error;
+          } catch (err) {
+            hideLoadingPopup();
+            showToast('Sinyal kurang stabil saat mengirim jawaban. Jawaban Anda aman tersimpan di perangkat, silakan klik Selesai & Kirim Jawaban sekali lagi.', 'warning');
+            return;
+          } finally {
+            hideLoadingPopup();
+          }
+        }
 
         state.activeSession.score = score;
         state.activeSession.status = 'completed';
-        state.activeSession.submitted_at = new Date().toISOString();
+        state.activeSession.submitted_at = submittedAt;
 
-        if (!IS_PREVIEW && supabase) {
-          await supabase.from('exam_sessions').update({
-            answers,
-            score,
-            status: 'completed',
-            submitted_at: state.activeSession.submitted_at
-          }).eq('id', state.activeSession.id);
-        }
+        // Bersihkan cache lokal sesi setelah berhasil terkirim ke database Supabase
+        clearExamProgressLocal(state.activeSession.id);
 
         if (document.fullscreenElement) {
           document.exitFullscreen().catch(() => {});
