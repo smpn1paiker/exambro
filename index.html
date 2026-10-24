@@ -28,48 +28,57 @@
       box-sizing: border-box;
     }
 
-    /* Fullscreen Wrapper - Tema Tenang · Natural · Bersih (Slate Blue -> Sage Green -> Sand Beige) */
+    /* Fullscreen Wrapper - Tema Elegan & Fokus (Deep Navy -> Charcoal Blue -> Slate Blue) */
     #exambro-root {
       position: fixed;
       inset: 0;
       z-index: 999999;
-      background: linear-gradient(135deg, #d8e4f0 0%, #dfece3 50%, #f3ede2 100%);
+      background: linear-gradient(135deg, #0a192f 0%, #1e293b 50%, #3b5978 100%);
       background-attachment: fixed;
       overflow-y: auto;
       overflow-x: hidden;
       color: #0f172a;
     }
 
-    /* Glassmorphism Surface yang menyatu dengan palet Slate Blue - Sage Green - Sand Beige */
-    .glass-card {
-      background: rgba(255, 255, 255, 0.88);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.94);
-      box-shadow: 0 10px 30px -5px rgba(45, 76, 107, 0.06), 0 4px 12px -2px rgba(79, 119, 98, 0.04);
+    /* Kontras Otomatis untuk Judul Halaman di Atas Background Deep Navy -> Slate Blue */
+    #admin-tab-container > div > div:first-child h1 {
+      color: #f8fafc !important;
+      text-shadow: 0 2px 10px rgba(10, 25, 47, 0.35);
+    }
+    #admin-tab-container > div > div:first-child p {
+      color: #cbd5e1 !important;
     }
 
-    /* Aksen Bayangan saat Perpindahan Antar Menu atau Antar Halaman */
+    /* Glassmorphism Surface yang menyatu dengan palet Deep Navy - Charcoal Blue - Slate Blue */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.93);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.96);
+      box-shadow: 0 12px 32px -6px rgba(10, 25, 47, 0.28), 0 4px 14px -2px rgba(30, 41, 59, 0.18);
+    }
+
+    /* Aksen Bayangan saat Perpindahan Antar Menu atau Antar Halaman (transform: none di akhir agar modal fixed tidak terpotong) */
     @keyframes shadowSweepTransition {
       0% {
-        opacity: 0.78;
-        transform: translateY(7px) scale(0.993);
-        box-shadow: 0 28px 60px -12px rgba(59, 110, 140, 0.28), 0 14px 32px -8px rgba(92, 141, 118, 0.22);
+        opacity: 0.82;
+        transform: translateY(6px) scale(0.995);
+        box-shadow: 0 28px 60px -12px rgba(10, 25, 47, 0.45), 0 14px 32px -8px rgba(59, 89, 120, 0.3);
       }
       60% {
         opacity: 1;
-        transform: translateY(-2px) scale(1.001);
-        box-shadow: 0 20px 42px -10px rgba(59, 110, 140, 0.16), 0 8px 20px -6px rgba(92, 141, 118, 0.12);
+        transform: translateY(-1px) scale(1.001);
+        box-shadow: 0 20px 42px -10px rgba(10, 25, 47, 0.25), 0 8px 20px -6px rgba(59, 89, 120, 0.18);
       }
       100% {
         opacity: 1;
-        transform: translateY(0) scale(1);
-        box-shadow: 0 0 0 0 rgba(59, 110, 140, 0);
+        transform: none;
+        box-shadow: 0 0 0 0 rgba(10, 25, 47, 0);
       }
     }
 
     .transition-shadow-accent {
-      animation: shadowSweepTransition 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      animation: shadowSweepTransition 0.36s cubic-bezier(0.22, 1, 0.36, 1) forwards;
       border-radius: 1.5rem;
     }
 
@@ -79,15 +88,15 @@
       pointer-events: none;
       z-index: 9999994;
       opacity: 0;
-      background: radial-gradient(circle at 50% 35%, rgba(223, 236, 227, 0.1) 0%, rgba(59, 110, 140, 0.22) 100%);
-      box-shadow: inset 0 0 110px rgba(45, 76, 107, 0.26);
+      background: radial-gradient(circle at 50% 35%, rgba(59, 89, 120, 0.12) 0%, rgba(10, 25, 47, 0.38) 100%);
+      box-shadow: inset 0 0 120px rgba(10, 25, 47, 0.45);
       transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
     }
     #page-shadow-veil.active-veil {
       opacity: 1;
     }
 
-    /* Pop-up Loading Simpel Modern (Slate Blue -> Sage Green -> Sand Beige) */
+    /* Pop-up Loading Simpel Modern (Deep Navy -> Charcoal Blue -> Slate Blue) */
     #loading-popup-overlay {
       position: fixed;
       inset: 0;
@@ -95,9 +104,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: rgba(30, 58, 82, 0.16);
-      backdrop-filter: blur(5px);
-      -webkit-backdrop-filter: blur(5px);
+      background: rgba(10, 25, 47, 0.42);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s ease;
@@ -107,9 +116,9 @@
       pointer-events: auto;
     }
     .loading-card-modern {
-      background: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 237, 226, 0.96) 100%);
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.96) 100%);
       border: 1px solid rgba(255, 255, 255, 0.98);
-      box-shadow: 0 24px 48px -12px rgba(45, 76, 107, 0.24), 0 8px 20px -4px rgba(79, 119, 98, 0.16);
+      box-shadow: 0 24px 48px -12px rgba(10, 25, 47, 0.45), 0 8px 20px -4px rgba(30, 41, 59, 0.28);
       border-radius: 1.75rem;
       padding: 1.25rem 1.6rem;
       display: flex;
@@ -128,7 +137,7 @@
       width: 2.85rem;
       height: 2.85rem;
       border-radius: 9999px;
-      background: conic-gradient(from 0deg, #3b6e8c, #5c8d76, #d5c4a1, #3b6e8c);
+      background: conic-gradient(from 0deg, #0a192f, #1e293b, #3b5978, #60a5fa, #0a192f);
       -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 0);
       mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 0);
       animation: spinCalm 0.85s linear infinite;
@@ -1015,7 +1024,7 @@
               </button>
             </form>
           </div>
-          <p class="text-xs text-slate-400 mt-5 text-center">Exambro Sekolah &bull; Sistem Penilaian Berbasis Smartphone & Komputer</p>
+          <p class="text-xs text-slate-300 mt-5 text-center">Exambro Sekolah &bull; Sistem Penilaian Berbasis Smartphone & Komputer</p>
         </div>
       `;
     }
@@ -1043,12 +1052,12 @@
             <div>
               <!-- Brand Header -->
               <div class="flex items-center gap-3 px-2 py-2 mb-4 border-b border-slate-200/70 pb-4">
-                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30">
-                  <i class="fa-solid fa-graduation-cap text-lg"></i>
+                <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-500/30">
+                  <i class="fa-solid fa-mug-hot text-lg"></i>
                 </div>
                 <div>
-                  <h2 class="font-extrabold text-slate-900 text-base leading-tight">Panel Admin CBT</h2>
-                  <span class="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                  <h2 class="font-extrabold text-slate-900 text-sm leading-snug">Welcome Admin, jangan lupa ngopi 😊</h2>
+                  <span class="inline-block mt-1 text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                     TA ${escapeHtml(period.year_name)} &bull; ${escapeHtml(period.semester)}
                   </span>
                 </div>
@@ -1120,11 +1129,11 @@
             <!-- Mobile Header & Sub-Menu Selector untuk Layar HP -->
             <div class="lg:hidden no-print flex items-center justify-between glass-card p-3.5 rounded-2xl mb-4">
               <div class="flex items-center gap-2.5">
-                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
-                  <i class="fa-solid fa-graduation-cap"></i>
+                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+                  <i class="fa-solid fa-mug-hot"></i>
                 </div>
                 <div>
-                  <h2 class="font-extrabold text-sm text-slate-900">Panel Admin CBT</h2>
+                  <h2 class="font-extrabold text-xs sm:text-sm text-slate-900 leading-snug">Welcome Admin, jangan lupa ngopi 😊</h2>
                   <p class="text-[11px] text-blue-600 font-semibold">TA ${escapeHtml(period.year_name)} (${escapeHtml(period.semester)})</p>
                 </div>
               </div>
@@ -1433,45 +1442,61 @@
           </div>
         </div>
 
-        <!-- Modal Tambah/Edit Siswa -->
-        <div id="modal-student" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div class="glass-card bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl">
-            <h3 id="modal-student-title" class="text-lg font-extrabold text-slate-900 mb-4">Tambah Siswa Baru</h3>
-            <form onsubmit="window.app.saveStudent(event)" class="space-y-3.5">
-              <input type="hidden" id="form-student-id" />
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">NISN (10 Digit - Otomatis Jadi Username)</label>
-                <input type="text" id="form-student-nisn" required maxlength="15" placeholder="Contoh: 0091234567" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
+        <!-- Modal Tambah/Edit Siswa (Responsif & Tidak Terpotong di Semua Ukuran Layar) -->
+        <div id="modal-student" class="hidden fixed inset-0 z-[9999995] bg-slate-950/65 backdrop-blur-sm overflow-y-auto flex items-start sm:items-center justify-center p-3 sm:p-5">
+          <div class="glass-card bg-white rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 my-auto overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80 flex-shrink-0">
+              <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                  <i class="fa-solid fa-user-plus text-sm"></i>
+                </div>
+                <h3 id="modal-student-title" class="text-base sm:text-lg font-extrabold text-slate-900">Tambah Siswa Baru</h3>
               </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Nama Lengkap Siswa</label>
-                <input type="text" id="form-student-name" required placeholder="Nama lengkap sesuai ijazah" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
-              </div>
-              <div class="grid grid-cols-2 gap-3">
+              <button type="button" onclick="document.getElementById('modal-student').classList.add('hidden')" class="w-8 h-8 rounded-xl bg-slate-200/70 hover:bg-rose-100 hover:text-rose-600 text-slate-600 flex items-center justify-center text-sm transition">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <form onsubmit="window.app.saveStudent(event)" class="flex flex-col flex-1 overflow-hidden">
+              <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <input type="hidden" id="form-student-id" />
                 <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Jenis Kelamin</label>
-                  <select id="form-student-gender" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm">
-                    <option value="L">Laki-laki (L)</option>
-                    <option value="P">Perempuan (P)</option>
-                  </select>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">NISN (10 Digit - Otomatis Jadi Username)</label>
+                  <input type="text" id="form-student-nisn" required maxlength="15" placeholder="Contoh: 0091234567" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Rombongan Kelas</label>
-                  <select id="form-student-class" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm">
-                    ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}">${escapeHtml(c.class_name)}</option>`).join('')}
-                  </select>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">Nama Lengkap Siswa</label>
+                  <input type="text" id="form-student-name" required placeholder="Nama lengkap sesuai ijazah" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Jenis Kelamin</label>
+                    <select id="form-student-gender" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="L">Laki-laki (L)</option>
+                      <option value="P">Perempuan (P)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Rombongan Kelas</label>
+                    <select id="form-student-class" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}">${escapeHtml(c.class_name)}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">Nomor Peserta Ujian (Opsional)</label>
+                  <input type="text" id="form-student-exam-num" placeholder="Otomatis jika dikosongkan" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div class="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900">
+                  <i class="fa-solid fa-key mr-1.5 text-blue-600"></i>Kata sandi default otomatis disetel ke: <strong>siswa123</strong>
                 </div>
               </div>
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Nomor Peserta Ujian (Opsional)</label>
-                <input type="text" id="form-student-exam-num" placeholder="Otomatis jika dikosongkan" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
-              </div>
-              <div class="p-3 rounded-xl bg-slate-100 text-xs text-slate-600">
-                <i class="fa-solid fa-key mr-1 text-blue-600"></i>Kata sandi default otomatis disetel ke: <strong>siswa123</strong>
-              </div>
-              <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="document.getElementById('modal-student').classList.add('hidden')" class="btn-3d px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
-                <button type="submit" class="btn-3d px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold">Simpan Data</button>
+
+              <div class="flex justify-end gap-2.5 px-6 py-4 border-t border-slate-200 bg-slate-50/90 flex-shrink-0">
+                <button type="button" onclick="document.getElementById('modal-student').classList.add('hidden')" class="btn-3d px-4 py-2.5 rounded-xl bg-slate-200 text-slate-700 text-xs font-bold">Batal</button>
+                <button type="submit" class="btn-3d px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold shadow-md shadow-blue-600/20">
+                  <i class="fa-solid fa-floppy-disk mr-1.5"></i>Simpan Data Siswa
+                </button>
               </div>
             </form>
           </div>
@@ -2028,10 +2053,10 @@
           </div>
 
           <div class="flex items-center justify-between pt-2">
-            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-700">
-              <i class="fa-solid fa-id-card mr-1.5 text-blue-600"></i>Pratinjau Cetak Kartu Peserta Ujian (Ukuran Standar ID Card / KTP: 85.6mm &times; 54mm)
+            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-100">
+              <i class="fa-solid fa-id-card mr-1.5 text-blue-400"></i>Pratinjau Cetak Kartu Peserta Ujian (Ukuran Standar ID Card / KTP: 85.6mm &times; 54mm)
             </h3>
-            <span class="text-xs text-slate-500">Siap Cetak Kertas A4 (2 Kolom Presisi Ukuran KTP)</span>
+            <span class="text-xs text-slate-300">Siap Cetak Kertas A4 (2 Kolom Presisi Ukuran KTP)</span>
           </div>
         </div>
 
@@ -2269,98 +2294,113 @@
           `}
         </div>
 
-        <!-- Modal Tambah / Edit Jadwal Ujian & Pengawas -->
-        <div id="modal-schedule" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div class="glass-card bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl my-8">
-            <h3 id="modal-schedule-title" class="text-lg font-extrabold text-slate-900 mb-4">Atur Jadwal Ujian & Pengawas</h3>
-            <form onsubmit="window.app.saveSchedule(event)" class="space-y-3.5">
-              <input type="hidden" id="form-schedule-id" />
-              <div>
-                <label class="block text-xs font-bold text-slate-600 mb-1">Nama / Judul Jadwal Ujian</label>
-                <input type="text" id="form-schedule-title" required placeholder="Contoh: Ujian Sekolah Bahasa Indonesia Kelas IX" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
+        <!-- Modal Tambah / Edit Jadwal Ujian & Pengawas (Responsif & Tidak Terpotong di Semua Ukuran Layar) -->
+        <div id="modal-schedule" class="hidden fixed inset-0 z-[9999995] bg-slate-950/65 backdrop-blur-sm overflow-y-auto flex items-start sm:items-center justify-center p-3 sm:p-5">
+          <div class="glass-card bg-white rounded-3xl max-w-xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 my-auto overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50/80 flex-shrink-0">
+              <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                  <i class="fa-solid fa-calendar-plus text-sm"></i>
+                </div>
+                <h3 id="modal-schedule-title" class="text-base sm:text-lg font-extrabold text-slate-900">Atur Jadwal Ujian & Pengawas</h3>
+              </div>
+              <button type="button" onclick="document.getElementById('modal-schedule').classList.add('hidden')" class="w-8 h-8 rounded-xl bg-slate-200/70 hover:bg-rose-100 hover:text-rose-600 text-slate-600 flex items-center justify-center text-sm transition">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <form onsubmit="window.app.saveSchedule(event)" class="flex flex-col flex-1 overflow-hidden">
+              <div class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <input type="hidden" id="form-schedule-id" />
+                <div>
+                  <label class="block text-xs font-bold text-slate-700 mb-1.5">Nama / Judul Jadwal Ujian</label>
+                  <input type="text" id="form-schedule-title" required placeholder="Contoh: Ujian Sekolah Bahasa Indonesia Kelas IX" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Mata Pelajaran</label>
+                    <select id="form-schedule-subject" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      ${state.subjects.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`).join('')}
+                      <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                      <option value="Matematika">Matematika</option>
+                      <option value="Ilmu Pengetahuan Alam (IPA)">Ilmu Pengetahuan Alam (IPA)</option>
+                      <option value="Bahasa Inggris">Bahasa Inggris</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Kelas Peserta Ujian</label>
+                    <select id="form-schedule-class" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="Semua">Semua Kelas</option>
+                      <option value="Semua VII">Semua Tingkat VII</option>
+                      <option value="Semua VIII">Semua Tingkat VIII</option>
+                      <option value="Semua IX">Semua Tingkat IX</option>
+                      ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}">Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Tanggal Ujian</label>
+                    <input type="date" id="form-schedule-date" required class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Jam Mulai</label>
+                    <input type="time" id="form-schedule-start" required value="07:30" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Jam Selesai</label>
+                    <input type="time" id="form-schedule-end" required value="09:30" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-300 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Pengawas Ujian</label>
+                    <input type="text" id="form-schedule-proctor" list="teacher-list-options" required placeholder="Pilih atau ketik nama pengawas" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <datalist id="teacher-list-options">
+                      ${state.teachers.map(t => `<option value="${escapeHtml(t.name)}">${escapeHtml(t.subject_name)}</option>`).join('')}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Ruang / Sesi Ujian</label>
+                    <input type="text" id="form-schedule-room" placeholder="Contoh: Ruang 01 / Sesi 1" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Durasi Pengerjaan (Menit)</label>
+                    <input type="number" id="form-schedule-duration" required min="10" max="300" value="60" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Toleransi Pindah Tab/Layar</label>
+                    <input type="number" id="form-schedule-violations" required min="1" max="10" value="3" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                  <div class="flex items-center gap-2.5">
+                    <input type="checkbox" id="form-schedule-shuffle-q" class="w-4 h-4 text-blue-600 rounded cursor-pointer" />
+                    <label for="form-schedule-shuffle-q" class="text-xs font-bold text-slate-700 cursor-pointer">Acak Urutan Soal untuk Setiap Siswa</label>
+                  </div>
+                  <div class="flex items-center gap-2.5">
+                    <input type="checkbox" id="form-schedule-shuffle-opt" class="w-4 h-4 text-blue-600 rounded cursor-pointer" />
+                    <label for="form-schedule-shuffle-opt" class="text-xs font-bold text-slate-700 cursor-pointer">Acak Opsi / Kunci Jawaban (ABCD) untuk Setiap Siswa</label>
+                  </div>
+                  <div class="flex items-center gap-2.5 pt-2 border-t border-slate-200">
+                    <input type="checkbox" id="form-schedule-active" checked class="w-4 h-4 text-emerald-600 rounded cursor-pointer" />
+                    <label for="form-schedule-active" class="text-xs font-bold text-emerald-700 cursor-pointer">Langsung Aktifkan Jadwal Ujian Ini untuk Siswa</label>
+                  </div>
+                </div>
               </div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran</label>
-                  <select id="form-schedule-subject" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm">
-                    ${state.subjects.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`).join('')}
-                    <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                    <option value="Matematika">Matematika</option>
-                    <option value="Ilmu Pengetahuan Alam (IPA)">Ilmu Pengetahuan Alam (IPA)</option>
-                    <option value="Bahasa Inggris">Bahasa Inggris</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Kelas Peserta Ujian</label>
-                  <select id="form-schedule-class" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm">
-                    <option value="Semua">Semua Kelas</option>
-                    <option value="Semua VII">Semua Tingkat VII</option>
-                    <option value="Semua VIII">Semua Tingkat VIII</option>
-                    <option value="Semua IX">Semua Tingkat IX</option>
-                    ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}">Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
-                  </select>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-3 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Tanggal Ujian</label>
-                  <input type="date" id="form-schedule-date" required class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Jam Mulai</label>
-                  <input type="time" id="form-schedule-start" required value="07:30" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Jam Selesai</label>
-                  <input type="time" id="form-schedule-end" required value="09:30" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Pengawas Ujian</label>
-                  <input type="text" id="form-schedule-proctor" list="teacher-list-options" required placeholder="Pilih atau ketik nama pengawas" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
-                  <datalist id="teacher-list-options">
-                    ${state.teachers.map(t => `<option value="${escapeHtml(t.name)}">${escapeHtml(t.subject_name)}</option>`).join('')}
-                  </datalist>
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Ruang / Sesi Ujian</label>
-                  <input type="text" id="form-schedule-room" placeholder="Contoh: Ruang 01 / Sesi 1" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
-                </div>
-              </div>
-
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Durasi Pengerjaan (Menit)</label>
-                  <input type="number" id="form-schedule-duration" required min="10" max="300" value="60" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-600 mb-1">Toleransi Pindah Tab/Layar</label>
-                  <input type="number" id="form-schedule-violations" required min="1" max="10" value="3" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm" />
-                </div>
-              </div>
-
-              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                <div class="flex items-center gap-2">
-                  <input type="checkbox" id="form-schedule-shuffle-q" class="w-4 h-4 text-blue-600 rounded" />
-                  <label for="form-schedule-shuffle-q" class="text-xs font-bold text-slate-700">Acak Urutan Soal untuk Setiap Siswa</label>
-                </div>
-                <div class="flex items-center gap-2">
-                  <input type="checkbox" id="form-schedule-shuffle-opt" class="w-4 h-4 text-blue-600 rounded" />
-                  <label for="form-schedule-shuffle-opt" class="text-xs font-bold text-slate-700">Acak Opsi / Kunci Jawaban (ABCD) untuk Setiap Siswa</label>
-                </div>
-                <div class="flex items-center gap-2 pt-1 border-t border-slate-200">
-                  <input type="checkbox" id="form-schedule-active" checked class="w-4 h-4 text-emerald-600 rounded" />
-                  <label for="form-schedule-active" class="text-xs font-bold text-emerald-700">Langsung Aktifkan Jadwal Ujian Ini untuk Siswa</label>
-                </div>
-              </div>
-
-              <div class="flex justify-end gap-2 pt-3">
-                <button type="button" onclick="document.getElementById('modal-schedule').classList.add('hidden')" class="btn-3d px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
-                <button type="submit" class="btn-3d px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold">Simpan Jadwal Ujian</button>
+              <div class="flex justify-end gap-2.5 px-6 py-4 border-t border-slate-200 bg-slate-50/90 flex-shrink-0">
+                <button type="button" onclick="document.getElementById('modal-schedule').classList.add('hidden')" class="btn-3d px-4 py-2.5 rounded-xl bg-slate-200 text-slate-700 text-xs font-bold">Batal</button>
+                <button type="submit" class="btn-3d px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold shadow-md shadow-blue-600/20">
+                  <i class="fa-solid fa-floppy-disk mr-1.5"></i>Simpan Jadwal Ujian
+                </button>
               </div>
             </form>
           </div>
@@ -2943,7 +2983,7 @@
               </div>
             </div>
 
-            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-500 mb-3">Daftar Jadwal Ujian Aktif Anda</h3>
+            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-200 mb-3">Daftar Jadwal Ujian Aktif Anda</h3>
 
             ${availableExams.length === 0 ? `
               <div class="glass-card rounded-3xl p-10 text-center text-slate-400">
@@ -2991,7 +3031,7 @@
               </div>
             `}
           </div>
-          <p class="text-center text-[11px] text-slate-400 mt-8">Mode Keamanan Exambro Smartphone Aktif</p>
+          <p class="text-center text-[11px] text-slate-300 mt-8">Mode Keamanan Exambro Smartphone Aktif</p>
         </div>
 
         <!-- POP-UP MODAL TATA TERTIB UJIAN SAAT SISWA LOGIN -->
