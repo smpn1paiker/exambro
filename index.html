@@ -28,24 +28,157 @@
       box-sizing: border-box;
     }
 
-    /* Fullscreen Wrapper */
+    /* Fullscreen Wrapper - Tema Tenang · Natural · Bersih (Slate Blue -> Sage Green -> Sand Beige) */
     #exambro-root {
       position: fixed;
       inset: 0;
       z-index: 999999;
-      background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 50%, #f1f5f9 100%);
+      background: linear-gradient(135deg, #d8e4f0 0%, #dfece3 50%, #f3ede2 100%);
+      background-attachment: fixed;
       overflow-y: auto;
       overflow-x: hidden;
       color: #0f172a;
     }
 
-    /* Glassmorphism Surface */
+    /* Glassmorphism Surface yang menyatu dengan palet Slate Blue - Sage Green - Sand Beige */
     .glass-card {
-      background: rgba(255, 255, 255, 0.9);
+      background: rgba(255, 255, 255, 0.88);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.95);
-      box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.05), 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.94);
+      box-shadow: 0 10px 30px -5px rgba(45, 76, 107, 0.06), 0 4px 12px -2px rgba(79, 119, 98, 0.04);
+    }
+
+    /* Aksen Bayangan saat Perpindahan Antar Menu atau Antar Halaman */
+    @keyframes shadowSweepTransition {
+      0% {
+        opacity: 0.78;
+        transform: translateY(7px) scale(0.993);
+        box-shadow: 0 28px 60px -12px rgba(59, 110, 140, 0.28), 0 14px 32px -8px rgba(92, 141, 118, 0.22);
+      }
+      60% {
+        opacity: 1;
+        transform: translateY(-2px) scale(1.001);
+        box-shadow: 0 20px 42px -10px rgba(59, 110, 140, 0.16), 0 8px 20px -6px rgba(92, 141, 118, 0.12);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        box-shadow: 0 0 0 0 rgba(59, 110, 140, 0);
+      }
+    }
+
+    .transition-shadow-accent {
+      animation: shadowSweepTransition 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      border-radius: 1.5rem;
+    }
+
+    #page-shadow-veil {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999994;
+      opacity: 0;
+      background: radial-gradient(circle at 50% 35%, rgba(223, 236, 227, 0.1) 0%, rgba(59, 110, 140, 0.22) 100%);
+      box-shadow: inset 0 0 110px rgba(45, 76, 107, 0.26);
+      transition: opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    #page-shadow-veil.active-veil {
+      opacity: 1;
+    }
+
+    /* Pop-up Loading Simpel Modern (Slate Blue -> Sage Green -> Sand Beige) */
+    #loading-popup-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999997;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(30, 58, 82, 0.16);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    #loading-popup-overlay.show-loading {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .loading-card-modern {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 237, 226, 0.96) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.98);
+      box-shadow: 0 24px 48px -12px rgba(45, 76, 107, 0.24), 0 8px 20px -4px rgba(79, 119, 98, 0.16);
+      border-radius: 1.75rem;
+      padding: 1.25rem 1.6rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.65rem;
+      max-width: 18.5rem;
+      text-align: center;
+      transform: scale(0.92) translateY(8px);
+      transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #loading-popup-overlay.show-loading .loading-card-modern {
+      transform: scale(1) translateY(0);
+    }
+    .calm-spinner {
+      width: 2.85rem;
+      height: 2.85rem;
+      border-radius: 9999px;
+      background: conic-gradient(from 0deg, #3b6e8c, #5c8d76, #d5c4a1, #3b6e8c);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 0);
+      mask: radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 0);
+      animation: spinCalm 0.85s linear infinite;
+    }
+    @keyframes spinCalm {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Pop-up Indikator Sukses (Hanya Logo Saja - Responsif & Non-Blocking) */
+    #success-logo-popup {
+      position: fixed;
+      inset: 0;
+      z-index: 9999998;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.22s ease;
+    }
+    #success-logo-popup.show-success-logo {
+      opacity: 1;
+    }
+    .success-logo-badge {
+      width: 5.4rem;
+      height: 5.4rem;
+      border-radius: 1.85rem;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(223, 236, 227, 0.96) 55%, rgba(243, 237, 226, 0.98) 100%);
+      border: 2px solid rgba(92, 141, 118, 0.45);
+      box-shadow: 0 24px 48px -10px rgba(59, 110, 140, 0.32), 0 0 0 10px rgba(223, 236, 227, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: scale(0.45);
+      transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #success-logo-popup.show-success-logo .success-logo-badge {
+      transform: scale(1);
+    }
+    .success-logo-inner {
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 1.25rem;
+      background: linear-gradient(135deg, #3b6e8c 0%, #4d8b6e 100%);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.75rem;
+      box-shadow: 0 8px 18px -4px rgba(59, 110, 140, 0.45);
     }
 
     /* EFEK TIMBUL SAAT KURSOR MENGARAH (HOVER LIFT 3D EFFECT) */
@@ -253,6 +386,44 @@
     <!-- Konten dirender secara dinamis oleh JavaScript -->
   </div>
 
+  <!-- Elemen Overlay Global (Bayangan Transisi, Pop-up Loading, Pop-up Logo Sukses & Dialog Konfirmasi) -->
+  <div id="page-shadow-veil" class="no-print"></div>
+
+  <div id="loading-popup-overlay" class="no-print" aria-live="polite">
+    <div class="loading-card-modern">
+      <div class="calm-spinner"></div>
+      <div id="loading-popup-title" class="text-xs font-extrabold text-slate-800 tracking-wide">Memproses Data...</div>
+      <div id="loading-popup-subtitle" class="text-[11px] font-semibold text-amber-700 bg-amber-50/90 border border-amber-200/80 px-2.5 py-1 rounded-xl hidden">
+        <i class="fa-solid fa-wifi mr-1"></i>Sinyal kurang stabil, mohon tunggu...
+      </div>
+    </div>
+  </div>
+
+  <div id="success-logo-popup" class="no-print" aria-hidden="true">
+    <div class="success-logo-badge">
+      <div class="success-logo-inner">
+        <i class="fa-solid fa-check"></i>
+      </div>
+    </div>
+  </div>
+
+  <div id="custom-dialog-overlay" class="hidden no-print fixed inset-0 z-[9999999] bg-slate-900/45 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-card bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+          <i id="custom-dialog-icon" class="fa-solid fa-circle-question text-lg"></i>
+        </div>
+        <h4 id="custom-dialog-title" class="text-sm font-extrabold text-slate-900">Konfirmasi Tindakan</h4>
+      </div>
+      <p id="custom-dialog-message" class="text-xs text-slate-600 leading-relaxed whitespace-pre-line"></p>
+      <input id="custom-dialog-input" type="text" class="hidden w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" id="custom-dialog-cancel" class="btn-3d px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Batal</button>
+        <button type="button" id="custom-dialog-ok" class="btn-3d px-5 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold">Ya, Lanjutkan</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
@@ -263,8 +434,181 @@
     const SUPABASE_URL = 'https://lphwwdqmgidvhnwpvdnz.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_KD9o_q0AuSuJALD8Q_UlQg_3yvGsvRe';
 
+    // ============================================================================
+    // KONTROLER POP-UP LOADING, INDIKATOR LOGO SUKSES & AKSEN BAYANGAN TRANSISI
+    // ============================================================================
+    let activeRequestsCount = 0;
+    let loadingShowTimer = null;
+    let slowSignalTimer = null;
+    let successLogoTimer = null;
+    let shadowVeilTimer = null;
+
+    function showLoadingPopup(customTitle = 'Memproses Data...', isUnstable = false) {
+      const overlay = document.getElementById('loading-popup-overlay');
+      const titleEl = document.getElementById('loading-popup-title');
+      const subEl = document.getElementById('loading-popup-subtitle');
+      if (!overlay) return;
+      if (titleEl) titleEl.textContent = customTitle;
+      if (subEl) {
+        if (isUnstable || !navigator.onLine) {
+          subEl.classList.remove('hidden');
+        } else {
+          subEl.classList.add('hidden');
+        }
+      }
+      overlay.classList.add('show-loading');
+
+      clearTimeout(slowSignalTimer);
+      slowSignalTimer = setTimeout(() => {
+        if (overlay.classList.contains('show-loading') && subEl) {
+          subEl.classList.remove('hidden');
+        }
+      }, 2200);
+    }
+
+    function hideLoadingPopup() {
+      clearTimeout(loadingShowTimer);
+      clearTimeout(slowSignalTimer);
+      const overlay = document.getElementById('loading-popup-overlay');
+      const subEl = document.getElementById('loading-popup-subtitle');
+      if (overlay && navigator.onLine) {
+        overlay.classList.remove('show-loading');
+      }
+      if (subEl && navigator.onLine) {
+        subEl.classList.add('hidden');
+      }
+    }
+
+    // Pop-up Indikator Sukses (Hanya Logo Saja) untuk Penambahan / Perubahan Data Penting
+    function showSuccessLogoPopup() {
+      const popup = document.getElementById('success-logo-popup');
+      if (!popup) return;
+      clearTimeout(successLogoTimer);
+      popup.classList.add('show-success-logo');
+      successLogoTimer = setTimeout(() => {
+        popup.classList.remove('show-success-logo');
+      }, 950);
+    }
+
+    // Aksen Bayangan Halus Saat Berpindah Menu atau Halaman
+    function triggerTransitionShadow() {
+      const veil = document.getElementById('page-shadow-veil');
+      if (veil) {
+        clearTimeout(shadowVeilTimer);
+        veil.classList.add('active-veil');
+        shadowVeilTimer = setTimeout(() => {
+          veil.classList.remove('active-veil');
+        }, 250);
+      }
+      requestAnimationFrame(() => {
+        const target = document.getElementById('admin-tab-container')
+          || document.getElementById('exam-protected-container')
+          || document.querySelector('#exambro-root > div');
+        if (target) {
+          target.classList.remove('transition-shadow-accent');
+          void target.offsetWidth;
+          target.classList.add('transition-shadow-accent');
+        }
+      });
+    }
+
+    // Dialog Konfirmasi & Input Kustom (Menggantikan confirm/prompt bawaan agar responsif)
+    function customConfirm(message, title = 'Konfirmasi Tindakan') {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-dialog-overlay');
+        const titleEl = document.getElementById('custom-dialog-title');
+        const msgEl = document.getElementById('custom-dialog-message');
+        const inputEl = document.getElementById('custom-dialog-input');
+        const btnOk = document.getElementById('custom-dialog-ok');
+        const btnCancel = document.getElementById('custom-dialog-cancel');
+        if (!overlay) return resolve(true);
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        inputEl.classList.add('hidden');
+        overlay.classList.remove('hidden');
+
+        const cleanup = (val) => {
+          overlay.classList.add('hidden');
+          btnOk.onclick = null;
+          btnCancel.onclick = null;
+          resolve(val);
+        };
+        btnOk.onclick = () => cleanup(true);
+        btnCancel.onclick = () => cleanup(false);
+      });
+    }
+
+    function customPrompt(message, defaultValue = '', title = 'Input Data') {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-dialog-overlay');
+        const titleEl = document.getElementById('custom-dialog-title');
+        const msgEl = document.getElementById('custom-dialog-message');
+        const inputEl = document.getElementById('custom-dialog-input');
+        const btnOk = document.getElementById('custom-dialog-ok');
+        const btnCancel = document.getElementById('custom-dialog-cancel');
+        if (!overlay) return resolve(defaultValue);
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        inputEl.value = defaultValue;
+        inputEl.classList.remove('hidden');
+        overlay.classList.remove('hidden');
+        setTimeout(() => inputEl.focus(), 50);
+
+        const cleanup = (val) => {
+          overlay.classList.add('hidden');
+          inputEl.classList.add('hidden');
+          btnOk.onclick = null;
+          btnCancel.onclick = null;
+          resolve(val);
+        };
+        btnOk.onclick = () => cleanup(inputEl.value);
+        btnCancel.onclick = () => cleanup(null);
+      });
+    }
+
+    // Pantau Koneksi Sinyal Internet (Offline / Online) Secara Otomatis
+    window.addEventListener('offline', () => {
+      showLoadingPopup('Koneksi Terputus', true);
+    });
+    window.addEventListener('online', () => {
+      hideLoadingPopup();
+      showToast('Koneksi internet kembali stabil', 'info');
+    });
+
+    // Fetch Wrapper Pintar untuk Supabase (Otomatis Munculkan Loading Saat Menunggu / Sinyal Lambat)
+    const trackedFetch = async (...args) => {
+      activeRequestsCount++;
+      if (activeRequestsCount === 1) {
+        clearTimeout(loadingShowTimer);
+        loadingShowTimer = setTimeout(() => {
+          if (activeRequestsCount > 0) {
+            showLoadingPopup('Memuat & Menyinkronkan...');
+          }
+        }, 160);
+      }
+      try {
+        const response = await window.fetch(...args);
+        return response;
+      } catch (err) {
+        showLoadingPopup('Sinyal tidak stabil, mencoba kembali...', true);
+        setTimeout(() => {
+          if (activeRequestsCount === 0) hideLoadingPopup();
+        }, 1400);
+        throw err;
+      } finally {
+        activeRequestsCount = Math.max(0, activeRequestsCount - 1);
+        if (activeRequestsCount === 0) {
+          hideLoadingPopup();
+        }
+      }
+    };
+
     const supabase = (!IS_PREVIEW && SUPABASE_URL && SUPABASE_URL.startsWith('http'))
-      ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          global: { fetch: trackedFetch }
+        })
       : null;
 
     // Default Pengaturan Desain Kartu Peserta Ujian (Ukuran KTP / ID Card)
@@ -367,6 +711,9 @@
     // UTILITAS UMUM & NOTIFIKASI TOAST
     // ============================================================================
     function showToast(message, type = 'info') {
+      if (type === 'success') {
+        showSuccessLogoPopup();
+      }
       const existing = document.getElementById('toast-container');
       if (existing) existing.remove();
 
@@ -2887,6 +3234,7 @@
     // ============================================================================
     window.app = {
       switchLoginTab(tab) {
+        triggerTransitionShadow();
         const stdForm = document.getElementById('form-login-student');
         const admForm = document.getElementById('form-login-admin');
         const stdBtn = document.getElementById('tab-btn-student');
@@ -2910,12 +3258,15 @@
         const email = document.getElementById('admin-email').value.trim();
         const password = document.getElementById('admin-password').value.trim();
 
+        showLoadingPopup('Memverifikasi Akun Admin...');
         if (IS_PREVIEW) {
           state.role = 'admin';
           state.currentUser = { email };
           await loadAllAdminData();
+          hideLoadingPopup();
           showToast('Berhasil masuk ke Panel Admin', 'success');
           renderApp();
+          triggerTransitionShadow();
           return;
         }
 
@@ -2927,8 +3278,11 @@
           await loadAllAdminData();
           showToast('Selamat datang di Panel Admin', 'success');
           renderApp();
+          triggerTransitionShadow();
         } catch (err) {
           showToast('Login Admin gagal: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
       },
 
@@ -2937,8 +3291,10 @@
         const nisn = document.getElementById('student-nisn').value.trim();
         const password = document.getElementById('student-password').value.trim();
 
+        showLoadingPopup('Memeriksa Data Peserta...');
         if (IS_PREVIEW) {
           const std = state.students.find(s => (s.nisn === nisn || s.username === nisn) && s.password === password && !s.is_archived);
+          hideLoadingPopup();
           if (!std) {
             showToast('NISN atau Kata Sandi tidak sesuai!', 'error');
             return;
@@ -2954,6 +3310,7 @@
           state.rulesCheckboxChecked = false;
           state.pendingExamIdForRules = null;
           renderApp();
+          triggerTransitionShadow();
           return;
         }
 
@@ -2989,8 +3346,11 @@
           state.rulesCheckboxChecked = false;
           state.pendingExamIdForRules = null;
           renderApp();
+          triggerTransitionShadow();
         } catch (err) {
           showToast('Gagal menghubungi server ujian: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
       },
 
@@ -3010,6 +3370,7 @@
         state.rulesCheckboxChecked = false;
         state.pendingExamIdForRules = null;
         renderApp();
+        triggerTransitionShadow();
       },
 
       setAdminTab(tab) {
@@ -3018,6 +3379,7 @@
           state.masterMenuOpen = true;
         }
         renderApp();
+        triggerTransitionShadow();
       },
 
       toggleMasterMenu() {
@@ -3026,9 +3388,15 @@
       },
 
       async refreshAdminData() {
-        await loadAllAdminData();
-        showToast('Data berhasil disegarkan', 'success');
-        renderApp();
+        showLoadingPopup('Menyegarkan Data Server...');
+        try {
+          await loadAllAdminData();
+          showToast('Data berhasil disegarkan', 'success');
+          renderApp();
+          triggerTransitionShadow();
+        } finally {
+          hideLoadingPopup();
+        }
       },
 
       // ----------------- MANAJEMEN DATA SISWA -----------------
@@ -3114,7 +3482,8 @@
         const s = state.students.find(x => x.id === id);
         if (!s) return;
         const nextArchive = !s.is_archived;
-        if (!confirm(`Apakah Anda yakin ingin ${nextArchive ? 'mengarsipkan' : 'memulihkan'} siswa ${s.name}?`)) return;
+        const ok = await customConfirm(`Apakah Anda yakin ingin ${nextArchive ? 'mengarsipkan' : 'memulihkan'} siswa ${s.name}?`, 'Konfirmasi Arsip Siswa');
+        if (!ok) return;
 
         if (IS_PREVIEW) {
           s.is_archived = nextArchive;
@@ -3122,12 +3491,14 @@
           await supabase.from('students').update({ is_archived: nextArchive }).eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         showToast('Status arsip siswa diperbarui', 'info');
         renderApp();
       },
 
       async bulkToggleStudents(activeState) {
-        if (!confirm(`Ubah status seluruh siswa aktif menjadi ${activeState ? 'DIIZINKAN UJIAN' : 'NONAKTIF'}?`)) return;
+        const ok = await customConfirm(`Ubah status seluruh siswa aktif menjadi ${activeState ? 'DIIZINKAN UJIAN' : 'NONAKTIF'}?`, 'Konfirmasi Status Massal');
+        if (!ok) return;
         if (IS_PREVIEW) {
           state.students.forEach(s => {
             if (!s.is_archived) {
@@ -3207,6 +3578,7 @@
       setClassLevelFilter(lvl) {
         state.classFilterLevel = lvl;
         renderApp();
+        triggerTransitionShadow();
       },
 
       openClassModal(id = null) {
@@ -3251,13 +3623,15 @@
       },
 
       async deleteClass(id) {
-        if (!confirm('Hapus kelas ini dari daftar?')) return;
+        const ok = await customConfirm('Hapus kelas ini dari daftar?', 'Hapus Data Kelas');
+        if (!ok) return;
         if (IS_PREVIEW) {
           state.classes = state.classes.filter(c => c.id !== id);
         } else {
           await supabase.from('classes').delete().eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         renderApp();
       },
 
@@ -3307,12 +3681,14 @@
       },
 
       async deleteSubject(id) {
-        if (!confirm('Hapus mata pelajaran ini?')) return;
+        const ok = await customConfirm('Hapus mata pelajaran ini?', 'Hapus Mata Pelajaran');
+        if (!ok) return;
         if (IS_PREVIEW) state.subjects = state.subjects.filter(s => s.id !== id);
         else {
           await supabase.from('subjects').delete().eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         renderApp();
       },
 
@@ -3362,12 +3738,14 @@
       },
 
       async deleteTeacher(id) {
-        if (!confirm('Hapus data guru ini?')) return;
+        const ok = await customConfirm('Hapus data guru ini?', 'Hapus Data Guru');
+        if (!ok) return;
         if (IS_PREVIEW) state.teachers = state.teachers.filter(t => t.id !== id);
         else {
           await supabase.from('teachers').delete().eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         renderApp();
       },
 
@@ -3631,6 +4009,7 @@
           await supabase.from('students').update({ is_active: next, can_take_exam: next }).eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         showToast(`Status akses ${s.name} diubah`, 'info');
         renderApp();
       },
@@ -3638,7 +4017,7 @@
       async resetStudentPassword(id) {
         const s = state.students.find(x => x.id === id);
         if (!s) return;
-        const newPass = prompt(`Reset kata sandi untuk ${s.name} (NISN: ${s.nisn}).\nKetik kata sandi baru:`, 'siswa123');
+        const newPass = await customPrompt(`Reset kata sandi untuk ${s.name} (NISN: ${s.nisn}).\nKetik kata sandi baru:`, 'siswa123', 'Reset Kata Sandi Siswa');
         if (!newPass) return;
 
         if (IS_PREVIEW) s.password = newPass.trim();
@@ -3782,7 +4161,8 @@
       },
 
       async deleteSchedule(id) {
-        if (!confirm('Hapus jadwal ujian ini beserta soal di dalamnya?')) return;
+        const ok = await customConfirm('Hapus jadwal ujian ini beserta soal di dalamnya?', 'Hapus Jadwal Ujian');
+        if (!ok) return;
         if (IS_PREVIEW) {
           state.exams = state.exams.filter(e => e.id !== id);
           state.questions = state.questions.filter(q => q.exam_id !== id);
@@ -3790,6 +4170,7 @@
           await supabase.from('exams').delete().eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         showToast('Jadwal ujian dihapus', 'info');
         renderApp();
       },
@@ -3803,6 +4184,7 @@
         state.selectedExamId = examId;
         state.adminTab = 'exams';
         renderApp();
+        triggerTransitionShadow();
       },
 
       // ----------------- DAFTAR HADIR PESERTA STANDAR A4 / PDF -----------------
@@ -3810,22 +4192,26 @@
         state.attendanceExamId = examId;
         state.attendanceClassFilter = 'ALL';
         renderApp();
+        triggerTransitionShadow();
       },
 
       closeAttendanceView() {
         state.attendanceExamId = null;
         renderApp();
+        triggerTransitionShadow();
       },
 
       changeAttendanceExam(examId) {
         state.attendanceExamId = examId;
         state.attendanceClassFilter = 'ALL';
         renderApp();
+        triggerTransitionShadow();
       },
 
       changeAttendanceClass(className) {
         state.attendanceClassFilter = className;
         renderApp();
+        triggerTransitionShadow();
       },
 
       // ----------------- MANAJEMEN BANK SOAL & IMPOR (PISAH KELAS VII, VIII, IX) -----------------
@@ -3834,11 +4220,13 @@
         const matching = state.exams.filter(ex => level === 'ALL' || getExamGradeLevel(ex) === level);
         state.selectedExamId = matching.length > 0 ? matching[0].id : null;
         renderApp();
+        triggerTransitionShadow();
       },
 
       selectExamForQuestions(examId) {
         state.selectedExamId = examId;
         renderApp();
+        triggerTransitionShadow();
       },
 
       openQuestionModal(id = null) {
@@ -3907,7 +4295,8 @@
       },
 
       async removeQuestionImage(questionId) {
-        if (!confirm('Hapus gambar dari butir soal ini?')) return;
+        const ok = await customConfirm('Hapus gambar dari butir soal ini?', 'Hapus Gambar Soal');
+        if (!ok) return;
         if (IS_PREVIEW) {
           const q = state.questions.find(x => x.id === questionId);
           if (q) q.image_url = '';
@@ -3915,6 +4304,7 @@
           await supabase.from('questions').update({ image_url: '' }).eq('id', questionId);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         showToast('Gambar soal dihapus', 'info');
         renderApp();
       },
@@ -3952,12 +4342,14 @@
       },
 
       async deleteQuestion(id) {
-        if (!confirm('Hapus butir soal ini?')) return;
+        const ok = await customConfirm('Hapus butir soal ini?', 'Hapus Butir Soal');
+        if (!ok) return;
         if (IS_PREVIEW) state.questions = state.questions.filter(q => q.id !== id);
         else {
           await supabase.from('questions').delete().eq('id', id);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         renderApp();
       },
 
@@ -4087,13 +4479,15 @@
       },
 
       async resetStudentSession(sessionId) {
-        if (!confirm('Reset sesi ujian siswa ini agar dapat mengulang dari awal?')) return;
+        const ok = await customConfirm('Reset sesi ujian siswa ini agar dapat mengulang dari awal?', 'Reset Sesi Ujian');
+        if (!ok) return;
         if (IS_PREVIEW) {
           state.exam_sessions = state.exam_sessions.filter(s => s.id !== sessionId);
         } else {
           await supabase.from('exam_sessions').delete().eq('id', sessionId);
           await loadAllAdminData();
         }
+        showSuccessLogoPopup();
         showToast('Sesi ujian siswa berhasil direset', 'info');
         renderApp();
       },
@@ -4223,6 +4617,7 @@
         }, 1000);
 
         renderApp();
+        triggerTransitionShadow();
       },
 
       async selectAnswer(questionId, origOptionLetter) {
@@ -4244,18 +4639,21 @@
         if (next >= 0 && next < state.activeQuestions.length) {
           state.currentQuestionIndex = next;
           renderApp();
+          triggerTransitionShadow();
         }
       },
 
       jumpToQuestion(index) {
         state.currentQuestionIndex = index;
         renderApp();
+        triggerTransitionShadow();
       },
 
-      confirmSubmitExam() {
+      async confirmSubmitExam() {
         const answeredCount = Object.keys(state.activeSession?.answers || {}).length;
         const total = state.activeQuestions.length;
-        if (!confirm(`Anda telah menjawab ${answeredCount} dari ${total} soal.\nYakin ingin mengakhiri ujian dan mengirim jawaban sekarang?`)) return;
+        const ok = await customConfirm(`Anda telah menjawab ${answeredCount} dari ${total} soal.\nYakin ingin mengakhiri ujian dan mengirim jawaban sekarang?`, 'Kirim Jawaban Ujian');
+        if (!ok) return;
         window.app.submitExamNow();
       },
 
