@@ -630,7 +630,7 @@
       logo_right: '',
       card_title: 'KARTU PESERTA UJIAN',
       card_subtitle: 'Asesmen Sumatif Akhir Semester Ganjil T.A 2026/2027',
-      city_date: 'Jakarta, 24 Oktober 2026',
+      city_date: 'Jakarta, 24-10-2026',
       principal_name: 'Drs. H. Ahmad Sulaiman, M.Pd.',
       principal_nip: '19680512 199403 1 005',
       principal_signature: ''
@@ -760,6 +760,33 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }
+
+    // Format Tanggal Otomatis ke DD-MM-YYYY untuk Daftar Hadir & Seluruh Fitur
+    function formatDateDDMMYYYY(dateInput) {
+      if (!dateInput || dateInput === '-') return '-';
+      const str = String(dateInput).trim();
+      // Jika sudah format DD-MM-YYYY
+      if (/^\d{2}-\d{2}-\d{4}$/.test(str)) return str;
+      // Jika format YYYY-MM-DD (dari input type="date")
+      const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (ymdMatch) {
+        return `${ymdMatch[3]}-${ymdMatch[2]}-${ymdMatch[1]}`;
+      }
+      // Jika format YYYY/MM/DD
+      const slashMatch = str.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
+      if (slashMatch) {
+        return `${slashMatch[3]}-${slashMatch[2]}-${slashMatch[1]}`;
+      }
+      // Fallback parsing objek Date
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) {
+        const dd = String(parsed.getDate()).padStart(2, '0');
+        const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+        const yyyy = parsed.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+      }
+      return str;
     }
 
     function playWarningBeep() {
@@ -1050,10 +1077,10 @@
           <!-- FIXED SIDEBAR SEBELAH KIRI (DESKTOP) -->
           <aside class="admin-sidebar no-print fixed top-0 left-0 bottom-0 w-72 glass-card border-r border-slate-200/80 flex-col justify-between p-4 z-30 overflow-y-auto">
             <div>
-              <!-- Brand Header -->
+              <!-- Brand Header dengan Logo Pendidikan -->
               <div class="flex items-center gap-3 px-2 py-2 mb-4 border-b border-slate-200/70 pb-4">
                 <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-500/30">
-                  <i class="fa-solid fa-mug-hot text-lg"></i>
+                  <i class="fa-solid fa-graduation-cap text-lg"></i>
                 </div>
                 <div>
                   <h2 class="font-extrabold text-slate-900 text-sm leading-snug">Welcome Admin, jangan lupa ngopi 😊</h2>
@@ -1125,35 +1152,44 @@
           </aside>
 
           <!-- KONTEN UTAMA ADMIN -->
-          <main class="admin-main-content flex-1 p-4 sm:p-6 lg:p-8">
-            <!-- Mobile Header & Sub-Menu Selector untuk Layar HP -->
-            <div class="lg:hidden no-print flex items-center justify-between glass-card p-3.5 rounded-2xl mb-4">
-              <div class="flex items-center gap-2.5">
-                <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
-                  <i class="fa-solid fa-mug-hot"></i>
+          <main class="admin-main-content flex-1 p-4 sm:p-6 lg:p-8 flex flex-col justify-between min-h-screen">
+            <div class="flex-1">
+              <!-- Mobile Header & Sub-Menu Selector untuk Layar HP dengan Logo Pendidikan -->
+              <div class="lg:hidden no-print flex items-center justify-between glass-card p-3.5 rounded-2xl mb-4">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                  </div>
+                  <div>
+                    <h2 class="font-extrabold text-xs sm:text-sm text-slate-900 leading-snug">Welcome Admin, jangan lupa ngopi 😊</h2>
+                    <p class="text-[11px] text-blue-600 font-semibold">TA ${escapeHtml(period.year_name)} (${escapeHtml(period.semester)})</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 class="font-extrabold text-xs sm:text-sm text-slate-900 leading-snug">Welcome Admin, jangan lupa ngopi 😊</h2>
-                  <p class="text-[11px] text-blue-600 font-semibold">TA ${escapeHtml(period.year_name)} (${escapeHtml(period.semester)})</p>
-                </div>
+                <button onclick="window.app.logout()" class="btn-3d px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold">
+                  <i class="fa-solid fa-power-off"></i>
+                </button>
               </div>
-              <button onclick="window.app.logout()" class="btn-3d px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold">
-                <i class="fa-solid fa-power-off"></i>
-              </button>
+
+              ${isMasterSub ? `
+                <!-- Bar Pilihan Cepat Sub-Menu Data Master saat diakses via Layar HP -->
+                <div class="lg:hidden no-print flex gap-1.5 overflow-x-auto pb-2 mb-4">
+                  ${masterSubItems.map(item => `
+                    <button onclick="window.app.setAdminTab('${item.id}')" class="btn-3d whitespace-nowrap px-3 py-2 rounded-xl text-xs font-bold ${state.adminTab === item.id ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}">
+                      <i class="fa-solid ${item.icon} mr-1"></i>${item.label}
+                    </button>
+                  `).join('')}
+                </div>
+              ` : ''}
+
+              <div id="admin-tab-container"></div>
             </div>
 
-            ${isMasterSub ? `
-              <!-- Bar Pilihan Cepat Sub-Menu Data Master saat diakses via Layar HP -->
-              <div class="lg:hidden no-print flex gap-1.5 overflow-x-auto pb-2 mb-4">
-                ${masterSubItems.map(item => `
-                  <button onclick="window.app.setAdminTab('${item.id}')" class="btn-3d whitespace-nowrap px-3 py-2 rounded-xl text-xs font-bold ${state.adminTab === item.id ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 border border-slate-200'}">
-                    <i class="fa-solid ${item.icon} mr-1"></i>${item.label}
-                  </button>
-                `).join('')}
-              </div>
-            ` : ''}
-
-            <div id="admin-tab-container"></div>
+            <!-- Watermark Bagian Bawah Tengah Aplikasi Admin -->
+            <footer class="no-print mt-10 pt-4 pb-2 text-center">
+              <p class="text-xs font-semibold text-slate-300/85 tracking-wide drop-shadow-sm">
+                @copyright EXAMBRO V.2 2026 by. Agus Stiawan
+              </p>
+            </footer>
           </main>
 
           <!-- BOTTOM NAVIGATION BAR (KHUSUS MOBILE) -->
@@ -2250,7 +2286,7 @@
                         <div>
                           <div class="text-[10px] uppercase font-bold text-slate-400">Tanggal & Waktu</div>
                           <div class="font-bold text-slate-800 mt-0.5">
-                            <i class="fa-regular fa-calendar mr-1 text-blue-600"></i>${escapeHtml(ex.exam_date || '-')}
+                            <i class="fa-regular fa-calendar mr-1 text-blue-600"></i>${escapeHtml(formatDateDDMMYYYY(ex.exam_date))}
                           </div>
                           <div class="text-[11px] text-slate-600">
                             <i class="fa-regular fa-clock mr-1 text-blue-600"></i>${escapeHtml(ex.start_time || '07:30')} - ${escapeHtml(ex.end_time || '09:30')} (${ex.duration_minutes} Menit)
@@ -2518,7 +2554,7 @@
                 <div style="display:flex;">
                   <span style="width:120px; font-weight:700;">Hari / Tanggal</span>
                   <span style="margin-right:6px;">:</span>
-                  <span style="font-weight:700;">${escapeHtml(exam.exam_date || '-')}</span>
+                  <span style="font-weight:700;">${escapeHtml(formatDateDDMMYYYY(exam.exam_date))}</span>
                 </div>
                 <div style="display:flex;">
                   <span style="width:120px; font-weight:700;">Kelas / Rombel</span>
@@ -3004,7 +3040,7 @@
                       </div>
                       <h4 class="text-lg font-extrabold text-slate-900">${escapeHtml(ex.title)}</h4>
                       <p class="text-xs text-slate-500 mt-1">
-                        Pengawas: <strong>${escapeHtml(ex.proctor_name || '-')}</strong> &bull; Waktu: ${escapeHtml(ex.start_time || '07:30')} - ${escapeHtml(ex.end_time || '09:30')}
+                        Tanggal: <strong>${escapeHtml(formatDateDDMMYYYY(ex.exam_date))}</strong> &bull; Pengawas: <strong>${escapeHtml(ex.proctor_name || '-')}</strong> &bull; Waktu: ${escapeHtml(ex.start_time || '07:30')} - ${escapeHtml(ex.end_time || '09:30')}
                       </p>
 
                       <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
