@@ -210,6 +210,41 @@
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
+      .a4-attendance-sheet {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+
+    /* Lembar Daftar Hadir Standar Kertas A4 */
+    .a4-attendance-sheet {
+      width: 210mm;
+      min-height: 297mm;
+      background: #ffffff;
+      color: #0f172a;
+      padding: 12mm 14mm;
+      margin: 0 auto;
+      box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.12);
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+    .attendance-table th,
+    .attendance-table td {
+      border: 1px solid #1e293b;
+      padding: 5px 8px;
+      font-size: 9.5pt;
+    }
+    .attendance-table th {
+      background-color: #f1f5f9 !important;
+      font-weight: 800;
+      text-transform: uppercase;
+      text-align: center;
     }
   </style>
 </head>
@@ -244,7 +279,8 @@
       card_subtitle: 'Asesmen Sumatif Akhir Semester Ganjil T.A 2026/2027',
       city_date: 'Jakarta, 24 Oktober 2026',
       principal_name: 'Drs. H. Ahmad Sulaiman, M.Pd.',
-      principal_nip: '19680512 199403 1 005'
+      principal_nip: '19680512 199403 1 005',
+      principal_signature: ''
     };
 
     function loadSavedCardConfig() {
@@ -264,6 +300,9 @@
       adminTab: 'dashboard', // 'dashboard' | 'master-students' | 'master-classes' | 'master-subjects' | 'master-teachers' | 'master-periods' | 'master-accounts' | 'schedules' | 'exams' | 'results'
       masterMenuOpen: true,
       selectedExamId: null,
+      examBankLevelFilter: 'ALL', // 'ALL' | 'VII' | 'VIII' | 'IX'
+      attendanceExamId: null,
+      attendanceClassFilter: 'ALL',
       studentFilters: {
         search: '',
         className: 'ALL',
@@ -387,6 +426,25 @@
       return active ? active : { year_name: '2026/2027', semester: 'Ganjil' };
     }
 
+    // Menentukan tingkat kelas ('VII' | 'VIII' | 'IX' | 'Semua') dari paket jadwal ujian
+    function getExamGradeLevel(exam) {
+      if (!exam) return 'Semua';
+      const tc = String(exam.target_class || '').toUpperCase().trim();
+      if (tc.includes('VIII') || tc.startsWith('8')) return 'VIII';
+      if (tc.includes('IX') || tc.startsWith('9')) return 'IX';
+      if (tc.includes('VII') || tc.startsWith('7')) return 'VII';
+
+      const subObj = state.subjects.find(s => s.name === exam.subject);
+      if (subObj && ['VII', 'VIII', 'IX'].includes(subObj.level)) {
+        return subObj.level;
+      }
+      const titleUpper = String(exam.title || '').toUpperCase();
+      if (titleUpper.includes('VIII')) return 'VIII';
+      if (titleUpper.includes('IX')) return 'IX';
+      if (titleUpper.includes('VII')) return 'VII';
+      return 'Semua';
+    }
+
     // Fungsi Pengacak Array Deterministik (Berbasis Seed Siswa + Ujian agar konsisten jika halaman di-refresh saat ujian)
     function seededShuffle(array, seedStr) {
       const arr = [...array];
@@ -478,7 +536,13 @@
         if (qRes.data) state.questions = qRes.data;
         if (sesRes.data) state.exam_sessions = sesRes.data;
         if (cardRes && cardRes.data) {
-          state.cardConfig = { ...defaultCardConfig, ...cardRes.data };
+          const localSaved = loadSavedCardConfig();
+          state.cardConfig = {
+            ...defaultCardConfig,
+            ...localSaved,
+            ...cardRes.data,
+            principal_signature: cardRes.data.principal_signature || localSaved.principal_signature || ''
+          };
           try { localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig)); } catch (e) {}
         }
 
@@ -1543,16 +1607,22 @@
                   <input type="text" id="card-city-date" value="${escapeHtml(cfg.city_date)}" oninput="window.app.updateCardField('city_date', this.value)" placeholder="Contoh: Jakarta, 24 Oktober 2026" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs" />
                 </div>
                 <div>
-                  <label class="block text-[11px] font-bold text-slate-600 mb-1">Jabatan Pengesah</label>
-                  <input type="text" value="Kepala Sekolah" disabled class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-500" />
-                </div>
-                <div>
                   <label class="block text-[11px] font-bold text-slate-600 mb-1">Nama Kepala Sekolah</label>
                   <input type="text" id="card-principal-name" value="${escapeHtml(cfg.principal_name)}" oninput="window.app.updateCardField('principal_name', this.value)" placeholder="Contoh: Drs. H. Ahmad Sulaiman, M.Pd." class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold" />
                 </div>
                 <div>
                   <label class="block text-[11px] font-bold text-slate-600 mb-1">NIP Kepala Sekolah</label>
                   <input type="text" id="card-principal-nip" value="${escapeHtml(cfg.principal_nip)}" oninput="window.app.updateCardField('principal_nip', this.value)" placeholder="Contoh: 19680512 199403 1 005" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-mono" />
+                </div>
+                <div class="p-2.5 rounded-xl bg-white border border-slate-200">
+                  <label class="block text-[10px] font-extrabold text-slate-700 mb-1">Upload Tanda Tangan Kepala Sekolah (JPG/PNG)</label>
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onchange="window.app.handleCardLogoUpload(event, 'principal_signature')" class="w-full text-[10px] text-slate-500 file:mr-1.5 file:py-1 file:px-2 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-bold" />
+                  ${cfg.principal_signature ? `
+                    <div class="mt-2 flex items-center justify-between">
+                      <img src="${cfg.principal_signature}" alt="TTD Kepsek" class="h-9 object-contain border rounded px-1 bg-slate-50" />
+                      <button type="button" onclick="window.app.clearCardLogo('principal_signature')" class="text-[10px] text-rose-600 font-bold hover:underline">Hapus TTD</button>
+                    </div>
+                  ` : `<div class="text-[10px] text-slate-400 mt-1">Disarankan PNG transparan / JPG bersih</div>`}
                 </div>
               </div>
             </div>
@@ -1709,7 +1779,11 @@
               </div>
               <div style="text-align:left; min-width:38mm;">
                 <div style="color:#334155;">${escapeHtml(cfg.city_date)}</div>
-                <div style="font-weight:700; color:#0f172a; margin-bottom:2.8mm;">Kepala Sekolah,</div>
+                <div style="font-weight:700; color:#0f172a;">Kepala Sekolah,</div>
+                ${cfg.principal_signature
+                  ? `<div style="height:4.2mm; display:flex; align-items:center; margin:0.2mm 0;"><img src="${cfg.principal_signature}" alt="TTD" style="max-height:4.2mm; max-width:22mm; object-fit:contain;" /></div>`
+                  : `<div style="height:2.8mm;"></div>`
+                }
                 <div style="font-weight:800; color:#0f172a; text-decoration:underline;">${escapeHtml(cfg.principal_name)}</div>
                 <div style="font-weight:600; color:#334155;">NIP. ${escapeHtml(cfg.principal_nip)}</div>
               </div>
@@ -1720,9 +1794,14 @@
     }
 
     // ============================================================================
-    // MENU JADWAL UJIAN (WAKTU, KELAS, MAPEL, PENGAWAS, ACAK SOAL/OPSI, AKTIF/NONAKTIF)
+    // MENU JADWAL UJIAN (WAKTU, KELAS, MAPEL, PENGAWAS, DAFTAR HADIR A4/PDF)
     // ============================================================================
     function renderAdminSchedulesTab(container) {
+      if (state.attendanceExamId) {
+        renderAttendanceSheetView(container);
+        return;
+      }
+
       const filteredExams = state.exams.filter(ex => {
         if (state.scheduleFilterClass === 'ALL') return true;
         return ex.target_class === state.scheduleFilterClass || ex.target_class === 'Semua';
@@ -1733,12 +1812,19 @@
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Manajemen Pelaksanaan</span>
-              <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Jadwal Ujian & Pengawas</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Atur jadwal pelaksanaan ujian berdasarkan waktu, kelas, mata pelajaran, pengawas ruang, serta fitur acak soal/opsi.</p>
+              <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Jadwal Ujian, Pengawas & Daftar Hadir</h1>
+              <p class="text-xs sm:text-sm text-slate-500">Atur jadwal pelaksanaan ujian berdasarkan waktu, kelas, mata pelajaran, pengawas ruang, serta cetak <strong>Daftar Hadir Standar A4 / PDF</strong>.</p>
             </div>
-            <button onclick="window.app.openScheduleModal()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md shadow-blue-600/20">
-              <i class="fa-solid fa-calendar-plus mr-1.5"></i>Tambah Jadwal Ujian
-            </button>
+            <div class="flex flex-wrap gap-2">
+              ${state.exams.length > 0 ? `
+                <button onclick="window.app.openAttendanceView('${state.exams[0].id}')" class="btn-3d px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">
+                  <i class="fa-solid fa-clipboard-user mr-1.5"></i>Daftar Hadir Peserta (A4 / PDF)
+                </button>
+              ` : ''}
+              <button onclick="window.app.openScheduleModal()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md shadow-blue-600/20">
+                <i class="fa-solid fa-calendar-plus mr-1.5"></i>Tambah Jadwal Ujian
+              </button>
+            </div>
           </div>
 
           <!-- Filter Kelas pada Jadwal Ujian -->
@@ -1814,7 +1900,10 @@
                       <span class="text-xs font-semibold text-slate-600">
                         <i class="fa-solid fa-list-ol mr-1 text-blue-600"></i><strong>${qCount}</strong> Soal &bull; Maks. ${ex.max_violations || 3}x Pelanggaran
                       </span>
-                      <div class="flex gap-1.5">
+                      <div class="flex flex-wrap gap-1.5">
+                        <button onclick="window.app.openAttendanceView('${ex.id}')" class="btn-3d px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold" title="Cetak / Ekspor PDF Daftar Hadir A4">
+                          <i class="fa-solid fa-print mr-1"></i>Daftar Hadir (A4)
+                        </button>
                         <button onclick="window.app.manageExamQuestions('${ex.id}')" class="btn-3d px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold">
                           <i class="fa-solid fa-file-pen mr-1"></i>Kelola Soal
                         </button>
@@ -1933,23 +2022,258 @@
     }
 
     // ============================================================================
-    // MENU BANK SOAL & IMPOR (TEMPLATE WORD, UPLOAD GAMBAR TIAP SOAL, ACAK SOAL & OPSI)
+    // TAMPILAN CETAK & EKSPOR PDF DAFTAR HADIR PESERTA UJIAN (STANDAR KERTAS A4)
+    // ============================================================================
+    function renderAttendanceSheetView(container) {
+      const exam = state.exams.find(e => e.id === state.attendanceExamId) || state.exams[0];
+      if (!exam) {
+        state.attendanceExamId = null;
+        renderAdminSchedulesTab(container);
+        return;
+      }
+
+      const cfg = state.cardConfig || defaultCardConfig;
+      const period = getActiveAcademicPeriod();
+
+      // Filter siswa aktif berdasarkan kelas pada jadwal atau filter rombel yang dipilih
+      const studentsInSchedule = state.students.filter(s => {
+        if (s.is_archived) return false;
+        if (state.attendanceClassFilter !== 'ALL') {
+          return s.class_name === state.attendanceClassFilter;
+        }
+        const tc = exam.target_class || 'Semua';
+        if (tc === 'Semua') return true;
+        if (tc === 'Semua VII') return s.class_name.startsWith('VII.');
+        if (tc === 'Semua VIII') return s.class_name.startsWith('VIII.');
+        if (tc === 'Semua IX') return s.class_name.startsWith('IX.');
+        return s.class_name === tc;
+      });
+
+      const classLabel = state.attendanceClassFilter !== 'ALL'
+        ? state.attendanceClassFilter
+        : (exam.target_class || 'Semua Kelas');
+
+      container.innerHTML = `
+        <div class="space-y-5">
+          <!-- Bar Navigasi & Kontrol Cetak / Ekspor PDF (Disembunyikan saat Cetak) -->
+          <div class="no-print glass-card p-4 rounded-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 border border-blue-200">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <button onclick="window.app.closeAttendanceView()" class="btn-3d px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">
+                <i class="fa-solid fa-arrow-left mr-1.5"></i>Kembali ke Jadwal
+              </button>
+              <div>
+                <div class="text-xs font-extrabold text-blue-600 uppercase">Dokumen Standar A4 Siap Cetak / PDF</div>
+                <div class="text-sm font-extrabold text-slate-900">Daftar Hadir Peserta Ujian</div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2.5">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 uppercase">Pilih Jadwal Ujian:</label>
+                <select onchange="window.app.changeAttendanceExam(this.value)" class="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold">
+                  ${state.exams.map(e => `<option value="${e.id}" ${e.id === exam.id ? 'selected' : ''}>[${escapeHtml(e.subject)}] ${escapeHtml(e.title)}</option>`).join('')}
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold text-slate-500 uppercase">Filter Rombel Kelas:</label>
+                <select onchange="window.app.changeAttendanceClass(this.value)" class="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold">
+                  <option value="ALL">Sesuai Jadwal (${escapeHtml(exam.target_class || 'Semua')})</option>
+                  ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${state.attendanceClassFilter === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
+                </select>
+              </div>
+
+              <button onclick="window.print()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold shadow-lg shadow-blue-600/25 mt-3 sm:mt-4">
+                <i class="fa-solid fa-file-pdf mr-1.5"></i>Cetak / Ekspor PDF (Kertas A4)
+              </button>
+            </div>
+          </div>
+
+          <!-- LEMBAR DAFTAR HADIR STANDAR A4 -->
+          <div id="print-area" class="overflow-x-auto pb-6">
+            <div class="a4-attendance-sheet">
+              <!-- KOP SURAT RESMI SEKOLAH -->
+              <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:3px double #0f172a; padding-bottom:10px; margin-bottom:14px; gap:12px;">
+                <div style="width:65px; height:65px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                  ${cfg.logo_left
+                    ? `<img src="${cfg.logo_left}" alt="Logo Dinas" style="max-width:62px; max-height:62px; object-fit:contain;" />`
+                    : `<div style="width:55px; height:55px; border:1px dashed #94a3b8; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:8pt; color:#64748b; text-align:center;">LOGO</div>`
+                  }
+                </div>
+                <div style="flex:1; text-align:center; line-height:1.25;">
+                  <div style="font-size:11pt; font-weight:700; text-transform:uppercase; color:#1e293b;">${escapeHtml(cfg.dinas_name)}</div>
+                  <div style="font-size:14pt; font-weight:800; text-transform:uppercase; color:#0f172a; margin-top:2px;">${escapeHtml(cfg.school_name)}</div>
+                  <div style="font-size:9pt; font-weight:500; color:#334155; margin-top:2px;">${escapeHtml(cfg.school_address)}</div>
+                </div>
+                <div style="width:65px; height:65px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                  ${cfg.logo_right
+                    ? `<img src="${cfg.logo_right}" alt="Logo Sekolah" style="max-width:62px; max-height:62px; object-fit:contain;" />`
+                    : `<div style="width:55px; height:55px; border:1px dashed #94a3b8; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:8pt; color:#64748b; text-align:center;">LOGO</div>`
+                  }
+                </div>
+              </div>
+
+              <!-- JUDUL DOKUMEN DAFTAR HADIR -->
+              <div style="text-align:center; margin-bottom:14px;">
+                <div style="font-size:12.5pt; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; text-decoration:underline;">DAFTAR HADIR PESERTA UJIAN</div>
+                <div style="font-size:10pt; font-weight:700; color:#334155; margin-top:2px;">
+                  ${escapeHtml(cfg.card_subtitle || ('Tahun Ajaran ' + period.year_name + ' - Semester ' + period.semester))}
+                </div>
+              </div>
+
+              <!-- INFORMASI JADWAL UJIAN -->
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px 24px; font-size:9.5pt; margin-bottom:12px;">
+                <div style="display:flex;">
+                  <span style="width:120px; font-weight:700;">Mata Pelajaran</span>
+                  <span style="margin-right:6px;">:</span>
+                  <span style="font-weight:800;">${escapeHtml(exam.subject)}</span>
+                </div>
+                <div style="display:flex;">
+                  <span style="width:120px; font-weight:700;">Hari / Tanggal</span>
+                  <span style="margin-right:6px;">:</span>
+                  <span style="font-weight:700;">${escapeHtml(exam.exam_date || '-')}</span>
+                </div>
+                <div style="display:flex;">
+                  <span style="width:120px; font-weight:700;">Kelas / Rombel</span>
+                  <span style="margin-right:6px;">:</span>
+                  <span style="font-weight:800;">${escapeHtml(classLabel)}</span>
+                </div>
+                <div style="display:flex;">
+                  <span style="width:120px; font-weight:700;">Waktu / Sesi</span>
+                  <span style="margin-right:6px;">:</span>
+                  <span style="font-weight:700;">${escapeHtml(exam.start_time || '07:30')} - ${escapeHtml(exam.end_time || '09:30')} WIB</span>
+                </div>
+                <div style="display:flex;">
+                  <span style="width:120px; font-weight:700;">Ruang Ujian</span>
+                  <span style="margin-right:6px;">:</span>
+                  <span style="font-weight:700;">${escapeHtml(exam.room_name || 'Ruang 01')}</span>
+                </div>
+                <div style="display:flex;">
+                  <span style="width:120px; font-weight:700;">Pengawas Ruang</span>
+                  <span style="margin-right:6px;">:</span>
+                  <span style="font-weight:700;">${escapeHtml(exam.proctor_name || '-')}</span>
+                </div>
+              </div>
+
+              <!-- TABEL DAFTAR HADIR STANDAR A4 -->
+              <table class="attendance-table" style="width:100%; border-collapse:collapse; margin-bottom:14px;">
+                <thead>
+                  <tr>
+                    <th style="width:34px;">No</th>
+                    <th style="width:105px;">Nomor Peserta</th>
+                    <th style="width:92px;">NISN</th>
+                    <th>Nama Lengkap Peserta</th>
+                    <th style="width:36px;">L/P</th>
+                    <th style="width:55px;">Kelas</th>
+                    <th style="width:155px;">Tanda Tangan</th>
+                    <th style="width:85px;">Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${studentsInSchedule.length === 0 ? `
+                    <tr>
+                      <td colspan="8" style="text-align:center; padding:20px; color:#64748b;">Tidak ada data siswa aktif pada kelas ini.</td>
+                    </tr>
+                  ` : studentsInSchedule.map((s, idx) => {
+                    const num = idx + 1;
+                    const examNo = s.exam_number || ('26-' + s.class_name.replace('.', '') + '-' + String(num).padStart(3, '0'));
+                    const ses = state.exam_sessions.find(x => x.student_id === s.id && x.exam_id === exam.id);
+                    const ket = ses ? (ses.status === 'completed' ? 'Hadir (Selesai)' : 'Hadir') : '';
+                    return `
+                      <tr style="height:28px;">
+                        <td style="text-align:center; font-weight:700;">${num}</td>
+                        <td style="text-align:center; font-family:monospace; font-weight:700;">${escapeHtml(examNo)}</td>
+                        <td style="text-align:center; font-family:monospace;">${escapeHtml(s.nisn)}</td>
+                        <td style="font-weight:700;">${escapeHtml(s.name)}</td>
+                        <td style="text-align:center;">${escapeHtml(s.gender || 'L')}</td>
+                        <td style="text-align:center; font-weight:600;">${escapeHtml(s.class_name)}</td>
+                        <td style="padding-left:${num % 2 === 1 ? '6px' : '74px'}; font-size:8.5pt; color:#334155;">
+                          ${num}. ......................
+                        </td>
+                        <td style="text-align:center; font-size:8.5pt;">${escapeHtml(ket)}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+
+              <!-- REKAPITULASI & PENGESAHAN BAWAH -->
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:16px; font-size:9.5pt; page-break-inside:avoid;">
+                <!-- Kotak Rekapitulasi Kehadiran -->
+                <div style="border:1px solid #1e293b; border-radius:6px; padding:8px 12px; min-width:210px;">
+                  <div style="font-weight:800; text-transform:uppercase; font-size:8.5pt; border-bottom:1px solid #cbd5e1; padding-bottom:4px; margin-bottom:6px;">Rekapitulasi Kehadiran</div>
+                  <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                    <span>Jumlah Peserta Terdaftar</span>
+                    <strong>: ${studentsInSchedule.length} Orang</strong>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                    <span>Jumlah Peserta Hadir</span>
+                    <strong>: ....... Orang</strong>
+                  </div>
+                  <div style="display:flex; justify-content:space-between;">
+                    <span>Jumlah Tidak Hadir</span>
+                    <strong>: ....... Orang</strong>
+                  </div>
+                </div>
+
+                <!-- Tanda Tangan Kepala Sekolah -->
+                <div style="text-align:left; min-width:190px;">
+                  <div>Mengetahui,</div>
+                  <div style="font-weight:700;">Kepala Sekolah</div>
+                  ${cfg.principal_signature
+                    ? `<div style="height:48px; display:flex; align-items:center; margin:2px 0;"><img src="${cfg.principal_signature}" alt="TTD Kepsek" style="max-height:46px; object-fit:contain;" /></div>`
+                    : `<div style="height:50px;"></div>`
+                  }
+                  <div style="font-weight:800; text-decoration:underline;">${escapeHtml(cfg.principal_name)}</div>
+                  <div>NIP. ${escapeHtml(cfg.principal_nip)}</div>
+                </div>
+
+                <!-- Tanda Tangan Pengawas Ujian -->
+                <div style="text-align:left; min-width:190px;">
+                  <div>${escapeHtml(cfg.city_date)}</div>
+                  <div style="font-weight:700;">Pengawas Ruang Ujian,</div>
+                  <div style="height:50px;"></div>
+                  <div style="font-weight:800; text-decoration:underline;">${escapeHtml(exam.proctor_name && exam.proctor_name !== '-' ? exam.proctor_name : '............................................')}</div>
+                  <div>NIP. .......................................</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // MENU BANK SOAL & IMPOR (DIPISAHKAN ANTARA KELAS VII, VIII, DAN IX)
     // ============================================================================
     function renderAdminExamsTab(container) {
-      if (!state.selectedExamId && state.exams.length > 0) {
-        state.selectedExamId = state.exams[0].id;
+      // Filter paket jadwal ujian berdasarkan tingkat kelas VII, VIII, IX yang dipilih
+      const filteredExamsByLevel = state.exams.filter(ex => {
+        if (state.examBankLevelFilter === 'ALL') return true;
+        return getExamGradeLevel(ex) === state.examBankLevelFilter;
+      });
+
+      // Pastikan selectedExamId berada di dalam tingkat kelas yang sedang aktif
+      if (filteredExamsByLevel.length > 0 && !filteredExamsByLevel.some(e => e.id === state.selectedExamId)) {
+        state.selectedExamId = filteredExamsByLevel[0].id;
       }
-      const currentExam = state.exams.find(e => e.id === state.selectedExamId);
-      const examQuestions = state.questions
-        .filter(q => q.exam_id === state.selectedExamId)
-        .sort((a, b) => (a.order_number || 0) - (b.order_number || 0));
+
+      const currentExam = filteredExamsByLevel.find(e => e.id === state.selectedExamId) || null;
+      const examQuestions = currentExam
+        ? state.questions
+            .filter(q => q.exam_id === currentExam.id)
+            .sort((a, b) => (a.order_number || 0) - (b.order_number || 0))
+        : [];
+
+      const countLevel = (lvl) => state.exams.filter(e => getExamGradeLevel(e) === lvl).length;
 
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h1 class="text-2xl font-extrabold text-slate-900">Bank Soal & Impor Soal Pilihan Ganda</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Mendukung Template Word & Excel, upload gambar pada soal-soal tertentu, serta fitur Acak Soal & Acak Opsi/Kunci Jawaban.</p>
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Bank Soal Terpisah Per Tingkat Kelas</span>
+              <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Bank Soal & Impor Soal (Kelas VII, VIII, IX)</h1>
+              <p class="text-xs sm:text-sm text-slate-500">Pilih tab tingkat kelas di bawah untuk memisahkan paket soal antara <strong>Kelas VII</strong>, <strong>Kelas VIII</strong>, dan <strong>Kelas IX</strong>.</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button onclick="window.app.downloadQuestionWordTemplate()" class="btn-3d px-3.5 py-2 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-bold">
@@ -1964,14 +2288,45 @@
             </div>
           </div>
 
+          <!-- TAB PEMISAH SOAL ANTARA KELAS VII, VIII, DAN IX -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            ${[
+              { id: 'ALL', label: 'Semua Tingkat', count: state.exams.length, icon: 'fa-layer-group' },
+              { id: 'VII', label: 'Soal Kelas VII', count: countLevel('VII'), icon: 'fa-7' },
+              { id: 'VIII', label: 'Soal Kelas VIII', count: countLevel('VIII'), icon: 'fa-8' },
+              { id: 'IX', label: 'Soal Kelas IX', count: countLevel('IX'), icon: 'fa-9' }
+            ].map(tab => {
+              const active = state.examBankLevelFilter === tab.id;
+              return `
+                <button type="button" onclick="window.app.setExamBankLevel('${tab.id}')" class="hover-lift p-3.5 rounded-2xl border text-left transition flex items-center justify-between ${active ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-600 shadow-lg shadow-blue-500/25' : 'glass-card text-slate-700 border-slate-200'}">
+                  <div>
+                    <div class="text-xs font-extrabold">${tab.label}</div>
+                    <div class="text-[11px] ${active ? 'text-blue-100' : 'text-slate-400'} font-semibold">${tab.count} Paket Ujian</div>
+                  </div>
+                  <div class="w-8 h-8 rounded-xl ${active ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'} flex items-center justify-center font-extrabold text-xs">
+                    <i class="fa-solid ${tab.icon}"></i>
+                  </div>
+                </button>
+              `;
+            }).join('')}
+          </div>
+
           <!-- Pilih Paket Jadwal Ujian, Saklar Acak Soal/Opsi & Tombol Impor -->
           <div class="glass-card p-5 rounded-2xl space-y-4">
             <div class="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
               <div class="flex-1">
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Pilih Jadwal / Paket Ujian:</label>
-                <select onchange="window.app.selectExamForQuestions(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
-                  ${state.exams.map(e => `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[${escapeHtml(e.subject)} - Kelas ${escapeHtml(e.target_class)}] ${escapeHtml(e.title)}</option>`).join('')}
-                </select>
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Pilih Paket Ujian ${state.examBankLevelFilter === 'ALL' ? '(Semua Tingkat)' : '(Khusus Tingkat Kelas ' + state.examBankLevelFilter + ')'}:
+                </label>
+                ${filteredExamsByLevel.length === 0 ? `
+                  <div class="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800">
+                    Belum ada jadwal/paket ujian untuk Tingkat Kelas ${state.examBankLevelFilter}. Silakan buat terlebih dahulu di menu Jadwal Ujian.
+                  </div>
+                ` : `
+                  <select onchange="window.app.selectExamForQuestions(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
+                    ${filteredExamsByLevel.map(e => `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[Tingkat ${getExamGradeLevel(e)} &bull; ${escapeHtml(e.subject)} - Kelas ${escapeHtml(e.target_class)}] ${escapeHtml(e.title)}</option>`).join('')}
+                  </select>
+                `}
               </div>
 
               <!-- 3 Metode Impor Unggulan -->
@@ -2333,6 +2688,121 @@
               <button type="button" id="btn-accept-rules" onclick="window.app.confirmRulesAndProceed()" ${state.rulesCheckboxChecked ? '' : 'disabled'} class="btn-3d w-full py-3.5 rounded-2xl font-extrabold text-sm tracking-wide transition-all ${state.rulesCheckboxChecked ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30 cursor-pointer' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}">
                 <i class="fa-solid fa-circle-play mr-2"></i>MULAI UJIAN
               </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderStudentExamSheet(root) {
+      const q = state.activeQuestions[state.currentQuestionIndex];
+      const answers = state.activeSession?.answers || {};
+      const selectedOrigKey = q ? answers[q.id] : null;
+      const mins = String(Math.floor(state.remainingSeconds / 60)).padStart(2, '0');
+      const secs = String(state.remainingSeconds % 60).padStart(2, '0');
+
+      const optionsToRender = (q && q.displayOptions) ? q.displayOptions : (q ? [
+        { displayLetter: 'A', origKey: 'A', text: q.option_a },
+        { displayLetter: 'B', origKey: 'B', text: q.option_b },
+        { displayLetter: 'C', origKey: 'C', text: q.option_c },
+        { displayLetter: 'D', origKey: 'D', text: q.option_d }
+      ] : []);
+
+      root.innerHTML = `
+        <div id="exam-protected-container" class="exam-protected min-h-screen flex flex-col justify-between p-3 sm:p-5 max-w-4xl mx-auto select-none">
+          <!-- Top Bar Exambro -->
+          <div class="glass-card rounded-2xl p-3.5 mb-3 flex items-center justify-between">
+            <div>
+              <div class="text-xs font-extrabold text-blue-600 uppercase">${escapeHtml(state.activeExam.subject)}</div>
+              <div class="text-xs text-slate-600 font-bold truncate max-w-[180px] sm:max-w-xs">${escapeHtml(state.currentUser.name)} (${escapeHtml(state.currentUser.class_name)})</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold">
+                <i class="fa-solid fa-triangle-exclamation mr-1"></i>${state.activeSession.violation_count}/${state.activeExam.max_violations || 3}
+              </div>
+              <div class="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white font-mono font-extrabold text-sm">
+                <i class="fa-regular fa-clock mr-1 text-blue-400"></i><span id="exam-timer-display">${mins}:${secs}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Kartu Soal Utama -->
+          ${!q ? `
+            <div class="glass-card rounded-3xl p-8 text-center text-slate-500">Soal belum tersedia pada jadwal ujian ini.</div>
+          ` : `
+            <div class="glass-card rounded-3xl p-5 sm:p-7 flex-1 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-4">
+                  <span class="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold">
+                    SOAL NOMOR ${state.currentQuestionIndex + 1} DARI ${state.activeQuestions.length}
+                  </span>
+                  <button onclick="window.app.toggleDoubtful('${q.id}')" class="btn-3d px-3 py-1.5 rounded-xl text-xs font-bold ${state.doubtfulQuestions[q.id] ? 'bg-amber-400 text-slate-900' : 'bg-slate-100 text-slate-600'}">
+                    <i class="fa-solid fa-flag mr-1"></i>Ragu-ragu
+                  </button>
+                </div>
+
+                <div class="text-sm sm:text-base font-semibold text-slate-900 leading-relaxed whitespace-pre-line mb-4">${escapeHtml(q.question_text)}</div>
+
+                ${q.image_url ? `
+                  <div class="mb-4">
+                    <img src="${q.image_url}" alt="Ilustrasi Soal" class="max-h-64 rounded-2xl border border-slate-200 mx-auto object-contain" />
+                  </div>
+                ` : ''}
+
+                <!-- Pilihan Jawaban ABCD -->
+                <div class="space-y-2.5 mt-4">
+                  ${optionsToRender.map(opt => {
+                    const isPicked = selectedOrigKey === opt.origKey;
+                    return `
+                      <button type="button" onclick="window.app.selectAnswer('${q.id}', '${opt.origKey}')" class="hover-lift w-full text-left p-3.5 sm:p-4 rounded-2xl border-2 transition flex items-center gap-3.5 ${isPicked ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-600/25' : 'bg-white text-slate-800 border-slate-200 hover:border-blue-400'}">
+                        <span class="w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-xs ${isPicked ? 'bg-white text-blue-600' : 'bg-slate-100 text-slate-700'}">${opt.displayLetter}</span>
+                        <span class="text-xs sm:text-sm font-semibold flex-1">${escapeHtml(opt.text)}</span>
+                      </button>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+
+              <!-- Navigasi Sebelumnya / Selanjutnya -->
+              <div class="flex items-center justify-between gap-3 mt-6 pt-4 border-t border-slate-200/80">
+                <button onclick="window.app.navigateQuestion(-1)" ${state.currentQuestionIndex === 0 ? 'disabled' : ''} class="btn-3d px-4 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold disabled:opacity-40">
+                  <i class="fa-solid fa-arrow-left mr-1.5"></i>Sebelumnya
+                </button>
+
+                ${state.currentQuestionIndex < state.activeQuestions.length - 1 ? `
+                  <button onclick="window.app.navigateQuestion(1)" class="btn-3d px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold">
+                    Selanjutnya<i class="fa-solid fa-arrow-right ml-1.5"></i>
+                  </button>
+                ` : `
+                  <button onclick="window.app.confirmSubmitExam()" class="btn-3d px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold shadow-lg shadow-emerald-600/30">
+                    <i class="fa-solid fa-paper-plane mr-1.5"></i>Selesai & Kirim Jawaban
+                  </button>
+                `}
+              </div>
+            </div>
+          `}
+
+          <!-- Grid Nomor Soal -->
+          <div class="glass-card rounded-2xl p-3.5 mt-3">
+            <div class="text-[11px] font-bold text-slate-500 mb-2">Navigasi Nomor Soal:</div>
+            <div class="flex flex-wrap gap-1.5">
+              ${state.activeQuestions.map((item, idx) => {
+                const answered = answers[item.id];
+                const doubtful = state.doubtfulQuestions[item.id];
+                const isCurr = idx === state.currentQuestionIndex;
+                const cls = isCurr
+                  ? 'ring-2 ring-blue-600 bg-blue-600 text-white'
+                  : doubtful
+                  ? 'bg-amber-400 text-slate-900'
+                  : answered
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-white border border-slate-200 text-slate-700';
+                return `
+                  <button onclick="window.app.jumpToQuestion(${idx})" class="btn-3d w-9 h-9 rounded-xl text-xs font-extrabold flex items-center justify-center ${cls}">
+                    ${idx + 1}
+                  </button>
+                `;
+              }).join('')}
             </div>
           </div>
         </div>
@@ -3113,7 +3583,7 @@
         try {
           localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig));
           if (!IS_PREVIEW && supabase) {
-            const payload = {
+            const basePayload = {
               dinas_name: state.cardConfig.dinas_name,
               school_name: state.cardConfig.school_name,
               school_address: state.cardConfig.school_address,
@@ -3126,14 +3596,24 @@
               principal_nip: state.cardConfig.principal_nip,
               updated_at: new Date().toISOString()
             };
+            const fullPayload = {
+              ...basePayload,
+              principal_signature: state.cardConfig.principal_signature || ''
+            };
             const { data: existing } = await supabase.from('card_settings').select('id').limit(1).maybeSingle();
             if (existing && existing.id) {
-              await supabase.from('card_settings').update(payload).eq('id', existing.id);
+              const { error } = await supabase.from('card_settings').update(fullPayload).eq('id', existing.id);
+              if (error) {
+                await supabase.from('card_settings').update(basePayload).eq('id', existing.id);
+              }
             } else {
-              await supabase.from('card_settings').insert([payload]);
+              const { error } = await supabase.from('card_settings').insert([fullPayload]);
+              if (error) {
+                await supabase.from('card_settings').insert([basePayload]);
+              }
             }
           }
-          showToast('Desain Kartu Peserta Ujian berhasil disimpan!', 'success');
+          showToast('Desain Kartu Peserta & Tanda Tangan Kepsek berhasil disimpan!', 'success');
         } catch (err) {
           showToast('Tersimpan di perangkat lokal (' + err.message + ')', 'info');
         }
@@ -3315,12 +3795,47 @@
       },
 
       manageExamQuestions(examId) {
+        const ex = state.exams.find(e => e.id === examId);
+        if (ex) {
+          const lvl = getExamGradeLevel(ex);
+          state.examBankLevelFilter = ['VII', 'VIII', 'IX'].includes(lvl) ? lvl : 'ALL';
+        }
         state.selectedExamId = examId;
         state.adminTab = 'exams';
         renderApp();
       },
 
-      // ----------------- MANAJEMEN BANK SOAL & IMPOR -----------------
+      // ----------------- DAFTAR HADIR PESERTA STANDAR A4 / PDF -----------------
+      openAttendanceView(examId) {
+        state.attendanceExamId = examId;
+        state.attendanceClassFilter = 'ALL';
+        renderApp();
+      },
+
+      closeAttendanceView() {
+        state.attendanceExamId = null;
+        renderApp();
+      },
+
+      changeAttendanceExam(examId) {
+        state.attendanceExamId = examId;
+        state.attendanceClassFilter = 'ALL';
+        renderApp();
+      },
+
+      changeAttendanceClass(className) {
+        state.attendanceClassFilter = className;
+        renderApp();
+      },
+
+      // ----------------- MANAJEMEN BANK SOAL & IMPOR (PISAH KELAS VII, VIII, IX) -----------------
+      setExamBankLevel(level) {
+        state.examBankLevelFilter = level;
+        const matching = state.exams.filter(ex => level === 'ALL' || getExamGradeLevel(ex) === level);
+        state.selectedExamId = matching.length > 0 ? matching[0].id : null;
+        renderApp();
+      },
+
       selectExamForQuestions(examId) {
         state.selectedExamId = examId;
         renderApp();
