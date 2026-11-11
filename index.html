@@ -735,6 +735,7 @@
       masterMenuOpen: true,
       selectedExamId: null,
       examBankLevelFilter: 'ALL', // 'ALL' | 'VII' | 'VIII' | 'IX'
+      examBankSubjectFilter: 'ALL', // 'ALL' atau nama Mata Pelajaran dari Data Master
       attendanceExamId: null,
       attendanceClassFilter: 'ALL',
       studentFilters: {
@@ -749,6 +750,12 @@
       accountFilters: {
         search: '',
         className: 'ALL'
+      },
+      resultFilters: {
+        search: '',
+        className: 'ALL',
+        subject: 'ALL',
+        status: 'completed' // 'completed' | 'ALL'
       },
       showCardDesigner: true,
       showAllCardsPreview: false,
@@ -838,29 +845,25 @@
       if (str === null || str === undefined) return '';
       return String(str)
         .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+        .replace(/'/g, '&#039;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
     }
 
     // Format Tanggal Otomatis ke DD-MM-YYYY untuk Daftar Hadir & Seluruh Fitur
     function formatDateDDMMYYYY(dateInput) {
       if (!dateInput || dateInput === '-') return '-';
       const str = String(dateInput).trim();
-      // Jika sudah format DD-MM-YYYY
       if (/^\d{2}-\d{2}-\d{4}$/.test(str)) return str;
-      // Jika format YYYY-MM-DD (dari input type="date")
       const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
       if (ymdMatch) {
         return `${ymdMatch[3]}-${ymdMatch[2]}-${ymdMatch[1]}`;
       }
-      // Jika format YYYY/MM/DD
       const slashMatch = str.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
       if (slashMatch) {
         return `${slashMatch[3]}-${slashMatch[2]}-${slashMatch[1]}`;
       }
-      // Fallback parsing objek Date
       const parsed = new Date(str);
       if (!isNaN(parsed.getTime())) {
         const dd = String(parsed.getDate()).padStart(2, '0');
@@ -891,7 +894,53 @@
       return active ? active : { year_name: '2026/2027', semester: 'Ganjil' };
     }
 
-    // Menentukan tingkat kelas ('VII' | 'VIII' | 'IX' | 'Semua') dari paket jadwal ujian
+    // Helper normalisasi teks mata pelajaran agar pencocokan antara Data Master & Jadwal selalu akurat
+    function normalizeSubjectKey(name) {
+      return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    // Mengambil seluruh daftar Mata Pelajaran gabungan dari Data Master (state.subjects) dan Jadwal Ujian (state.exams)
+    function getAllMasterAndExamSubjects() {
+      const map = new Map();
+
+      // 1. Masukkan semua mata pelajaran dari Data Master terlebih dahulu
+      state.subjects.forEach(s => {
+        if (!s || s.is_archived) return;
+        const cleanName = String(s.name || '').trim();
+        if (!cleanName) return;
+        const key = normalizeSubjectKey(cleanName);
+        if (!map.has(key)) {
+          map.set(key, {
+            id: s.id,
+            code: String(s.code || 'MAPEL').trim(),
+            name: cleanName,
+            level: String(s.level || 'Semua').trim(),
+            fromMaster: true
+          });
+        }
+      });
+
+      // 2. Tambahkan mata pelajaran dari state.exams jika ada yang belum terdaftar di Data Master
+      state.exams.forEach(ex => {
+        if (!ex || !ex.subject) return;
+        const cleanName = String(ex.subject).trim();
+        if (!cleanName) return;
+        const key = normalizeSubjectKey(cleanName);
+        if (!map.has(key)) {
+          map.set(key, {
+            id: 'ext-' + key,
+            code: String(ex.subject_code || 'UJIAN').trim(),
+            name: cleanName,
+            level: getExamGradeLevel(ex),
+            fromMaster: false
+          });
+        }
+      });
+
+      return Array.from(map.values());
+    }
+
+    // Menentukan tingkat kelas ('VII' | 'VIII' | 'IX' | 'Semua') dari paket jadwal ujian secara akurat
     function getExamGradeLevel(exam) {
       if (!exam) return 'Semua';
       const tc = String(exam.target_class || '').toUpperCase().trim();
@@ -899,15 +948,26 @@
       if (tc.includes('IX') || tc.startsWith('9')) return 'IX';
       if (tc.includes('VII') || tc.startsWith('7')) return 'VII';
 
-      const subObj = state.subjects.find(s => s.name === exam.subject);
-      if (subObj && ['VII', 'VIII', 'IX'].includes(subObj.level)) {
-        return subObj.level;
+      const examSubKey = normalizeSubjectKey(exam.subject);
+      const subObj = state.subjects.find(s => normalizeSubjectKey(s.name) === examSubKey);
+      if (subObj && ['VII', 'VIII', 'IX'].includes(String(subObj.level || '').toUpperCase().trim())) {
+        return String(subObj.level).toUpperCase().trim();
       }
+
       const titleUpper = String(exam.title || '').toUpperCase();
-      if (titleUpper.includes('VIII')) return 'VIII';
-      if (titleUpper.includes('IX')) return 'IX';
-      if (titleUpper.includes('VII')) return 'VII';
+      if (titleUpper.includes('VIII') || /\bKELAS\s*8\b/.test(titleUpper)) return 'VIII';
+      if (titleUpper.includes('IX') || /\bKELAS\s*9\b/.test(titleUpper)) return 'IX';
+      if (titleUpper.includes('VII') || /\bKELAS\s*7\b/.test(titleUpper)) return 'VII';
       return 'Semua';
+    }
+
+    // Mengecek apakah sebuah paket ujian cocok dengan filter tab tingkat kelas ('ALL' | 'VII' | 'VIII' | 'IX')
+    function doesExamMatchLevelFilter(exam, levelFilter) {
+      if (!exam) return false;
+      if (!levelFilter || levelFilter === 'ALL') return true;
+      const exLevel = getExamGradeLevel(exam);
+      // Paket ujian dengan tingkat 'Semua' tetap ditampilkan di tab VII, VIII, dan IX agar tidak ada mapel yang hilang
+      return exLevel === levelFilter || exLevel === 'Semua';
     }
 
     // Fungsi Pengacak Array Deterministik (Berbasis Seed Siswa + Ujian agar konsisten jika halaman di-refresh saat ujian)
@@ -964,7 +1024,7 @@
     }
 
     // ============================================================================
-    //PENYIMPANAN JAWABAN LOKAL (LOCALSTORAGE) AGAR KUAT 380+ SISWA SERENTAK
+    // PENYIMPANAN JAWABAN LOKAL (LOCALSTORAGE) AGAR KUAT 380+ SISWA SERENTAK
     // ============================================================================
     function getLocalExamStorageKey(sessionId) {
       return `exambro_local_answers_v1_${sessionId}`;
@@ -1066,7 +1126,6 @@
             id: cardRes.data.id || null,
             principal_signature: serverData.principal_signature || localSaved.principal_signature || ''
           };
-          // Kompresi otomatis jika ada logo/tanda tangan berukuran terlalu besar dari penyimpanan sebelumnya
           for (const imgField of ['logo_left', 'logo_right', 'principal_signature']) {
             if (state.cardConfig[imgField] && state.cardConfig[imgField].length > 60000) {
               state.cardConfig[imgField] = await compressImageDataUrl(state.cardConfig[imgField], 240, 240);
@@ -1820,8 +1879,9 @@
             </button>
           </div>
 
-          <div class="glass-card p-4 rounded-2xl">
+          <div class="glass-card p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <input type="text" value="${escapeHtml(state.subjectSearch)}" oninput="window.app.setSubjectSearch(this.value)" placeholder="Cari kode atau nama mata pelajaran..." class="w-full sm:w-80 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs" />
+            <span class="text-xs text-slate-500 font-semibold">Total Mata Pelajaran: <strong>${filtered.length}</strong></span>
           </div>
 
           ${filtered.length === 0 ? `
@@ -1830,19 +1890,29 @@
             </div>
           ` : `
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              ${filtered.map(sub => `
-                <div class="glass-card hover-lift p-5 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <span class="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700">${escapeHtml(sub.code)}</span>
-                    <h3 class="text-base font-extrabold text-slate-900 mt-1.5">${escapeHtml(sub.name)}</h3>
-                    <p class="text-xs text-slate-500">Tingkat Kelas: <strong>${escapeHtml(sub.level || 'Semua')}</strong></p>
+              ${filtered.map(sub => {
+                const subExamsCount = state.exams.filter(ex => normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name)).length;
+                return `
+                  <div class="glass-card hover-lift p-5 rounded-2xl flex flex-col justify-between gap-3">
+                    <div class="flex items-start justify-between">
+                      <div>
+                        <span class="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700">${escapeHtml(sub.code)}</span>
+                        <h3 class="text-base font-extrabold text-slate-900 mt-1.5">${escapeHtml(sub.name)}</h3>
+                        <p class="text-xs text-slate-500">Tingkat Kelas: <strong>${escapeHtml(sub.level || 'Semua')}</strong> &bull; <strong>${subExamsCount}</strong> Paket Soal</p>
+                      </div>
+                      <div class="flex gap-1.5">
+                        <button onclick="window.app.openSubjectModal('${sub.id}')" class="btn-3d p-2 rounded-xl bg-blue-50 text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>
+                        <button onclick="window.app.deleteSubject('${sub.id}')" class="btn-3d p-2 rounded-xl bg-rose-50 text-rose-600 text-xs"><i class="fa-solid fa-trash"></i></button>
+                      </div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-100 flex justify-end">
+                      <button onclick="window.app.openBankSoalForSubject('${escapeHtml(sub.name)}', '${escapeHtml(sub.level || 'Semua')}')" class="btn-3d px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                        <i class="fa-solid fa-file-circle-question mr-1"></i>Input / Buka Bank Soal
+                      </button>
+                    </div>
                   </div>
-                  <div class="flex gap-1.5">
-                    <button onclick="window.app.openSubjectModal('${sub.id}')" class="btn-3d p-2 rounded-xl bg-blue-50 text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>
-                    <button onclick="window.app.deleteSubject('${sub.id}')" class="btn-3d p-2 rounded-xl bg-rose-50 text-rose-600 text-xs"><i class="fa-solid fa-trash"></i></button>
-                  </div>
-                </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           `}
         </div>
@@ -1885,6 +1955,7 @@
     function renderMasterTeachersTab(container) {
       const q = state.teacherSearch.toLowerCase().trim();
       const filtered = state.teachers.filter(t => !q || t.name.toLowerCase().includes(q) || (t.nip && t.nip.toLowerCase().includes(q)) || (t.subject_name && t.subject_name.toLowerCase().includes(q)));
+      const allSubjectsList = getAllMasterAndExamSubjects();
 
       container.innerHTML = `
         <div class="space-y-6">
@@ -1955,7 +2026,7 @@
                 <label class="block text-xs font-bold text-slate-600 mb-1">Mata Pelajaran yang Diampu</label>
                 <select id="form-teacher-subject" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm">
                   <option value="Umum">Umum / Pengawas Ruang</option>
-                  ${state.subjects.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('')}
+                  ${allSubjectsList.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join('')}
                 </select>
               </div>
               <div class="flex justify-end gap-2 pt-2">
@@ -2080,7 +2151,6 @@
       const logoRightSrc = getCardImageSrc('logo_right');
       const signatureSrc = getCardImageSrc('principal_signature');
 
-      // Batasi pratinjau kartu di layar (default 24 kartu) agar 380+ siswa tidak membuat layar hitam/berat, namun saat cetak tetap mencetak seluruh siswa terfilter
       const PREVIEW_LIMIT = 24;
       const previewCardsList = state.showAllCardsPreview ? activeList : activeList.slice(0, PREVIEW_LIMIT);
 
@@ -2414,6 +2484,8 @@
         return ex.target_class === state.scheduleFilterClass || ex.target_class === 'Semua';
       });
 
+      const allSubjectsList = getAllMasterAndExamSubjects();
+
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -2554,13 +2626,17 @@
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Mata Pelajaran</label>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">Mata Pelajaran (Terhubung Data Master)</label>
                     <select id="form-schedule-subject" required class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      ${state.subjects.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`).join('')}
-                      <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                      <option value="Matematika">Matematika</option>
-                      <option value="Ilmu Pengetahuan Alam (IPA)">Ilmu Pengetahuan Alam (IPA)</option>
-                      <option value="Bahasa Inggris">Bahasa Inggris</option>
+                      ${allSubjectsList.length > 0
+                        ? allSubjectsList.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)} (${escapeHtml(s.code)} - Tingkat ${escapeHtml(s.level || 'Semua')})</option>`).join('')
+                        : `
+                          <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                          <option value="Matematika">Matematika</option>
+                          <option value="Ilmu Pengetahuan Alam (IPA)">Ilmu Pengetahuan Alam (IPA)</option>
+                          <option value="Bahasa Inggris">Bahasa Inggris</option>
+                        `
+                      }
                     </select>
                   </div>
                   <div>
@@ -2657,7 +2733,6 @@
       const cfg = state.cardConfig || defaultCardConfig;
       const period = getActiveAcademicPeriod();
 
-      // Filter siswa aktif berdasarkan kelas pada jadwal atau filter rombel yang dipilih
       const studentsInSchedule = state.students.filter(s => {
         if (s.is_archived) return false;
         if (state.attendanceClassFilter !== 'ALL') {
@@ -2866,18 +2941,32 @@
     }
 
     // ============================================================================
-    // MENU BANK SOAL & IMPOR (DIPISAHKAN ANTARA KELAS VII, VIII, DAN IX)
+    // MENU BANK SOAL & IMPOR (TERINTEGRASI PENUH DENGAN DATA MASTER MATA PELAJARAN)
     // ============================================================================
     function renderAdminExamsTab(container) {
-      // Filter paket jadwal ujian berdasarkan tingkat kelas VII, VIII, IX yang dipilih
-      const filteredExamsByLevel = state.exams.filter(ex => {
+      // Ambil seluruh daftar Mata Pelajaran dari Data Master & Jadwal Ujian
+      const allMasterSubjects = getAllMasterAndExamSubjects();
+
+      // Filter mata pelajaran di dropdown sesuai tingkat kelas (jika mata pelajaran diset khusus tingkat tertentu, atau 'Semua')
+      const subjectsForCurrentLevel = allMasterSubjects.filter(s => {
         if (state.examBankLevelFilter === 'ALL') return true;
-        return getExamGradeLevel(ex) === state.examBankLevelFilter;
+        const sLvl = String(s.level || 'Semua').toUpperCase().trim();
+        return sLvl === 'SEMUA' || sLvl === state.examBankLevelFilter;
       });
 
-      // Pastikan selectedExamId berada di dalam tingkat kelas yang sedang aktif
+      // Filter paket ujian berdasarkan tingkat kelas DAN mata pelajaran yang dipilih
+      const filteredExamsByLevel = state.exams.filter(ex => {
+        const matchLevel = doesExamMatchLevelFilter(ex, state.examBankLevelFilter);
+        const matchSubject = state.examBankSubjectFilter === 'ALL'
+          || normalizeSubjectKey(ex.subject) === normalizeSubjectKey(state.examBankSubjectFilter);
+        return matchLevel && matchSubject;
+      });
+
+      // Pastikan selectedExamId menunjuk ke salah satu paket yang tampil
       if (filteredExamsByLevel.length > 0 && !filteredExamsByLevel.some(e => e.id === state.selectedExamId)) {
         state.selectedExamId = filteredExamsByLevel[0].id;
+      } else if (filteredExamsByLevel.length === 0) {
+        state.selectedExamId = null;
       }
 
       const currentExam = filteredExamsByLevel.find(e => e.id === state.selectedExamId) || null;
@@ -2887,15 +2976,23 @@
             .sort((a, b) => (a.order_number || 0) - (b.order_number || 0))
         : [];
 
-      const countLevel = (lvl) => state.exams.filter(e => getExamGradeLevel(e) === lvl).length;
+      const countLevel = (lvl) => state.exams.filter(e => doesExamMatchLevelFilter(e, lvl)).length;
+
+      // Cari mata pelajaran dari Data Master yang belum memiliki paket Bank Soal untuk tingkat yang sedang dipilih
+      const unlinkedMasterSubjects = subjectsForCurrentLevel.filter(sub => {
+        return !state.exams.some(ex =>
+          normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name) &&
+          doesExamMatchLevelFilter(ex, state.examBankLevelFilter)
+        );
+      });
 
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Bank Soal Terpisah Per Tingkat Kelas</span>
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Bank Soal Terintegrasi Data Master Mapel</span>
               <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Bank Soal & Impor Soal (Kelas VII, VIII, IX)</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Pilih tab tingkat kelas di bawah untuk memisahkan paket soal antara <strong>Kelas VII</strong>, <strong>Kelas VIII</strong>, dan <strong>Kelas IX</strong>.</p>
+              <p class="text-xs sm:text-sm text-slate-500">Seluruh Mata Pelajaran pada <strong>Data Master</strong> terdeteksi otomatis. Pilih Mata Pelajaran untuk langsung menambah atau mengimpor soal.</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button onclick="window.app.downloadQuestionWordTemplate()" class="btn-3d px-3.5 py-2 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-bold">
@@ -2923,7 +3020,7 @@
                 <button type="button" onclick="window.app.setExamBankLevel('${tab.id}')" class="hover-lift p-3.5 rounded-2xl border text-left transition flex items-center justify-between ${active ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-600 shadow-lg shadow-blue-500/25' : 'glass-card text-slate-700 border-slate-200'}">
                   <div>
                     <div class="text-xs font-extrabold">${tab.label}</div>
-                    <div class="text-[11px] ${active ? 'text-blue-100' : 'text-slate-400'} font-semibold">${tab.count} Paket Ujian</div>
+                    <div class="text-[11px] ${active ? 'text-blue-100' : 'text-slate-400'} font-semibold">${tab.count} Paket Tersedia</div>
                   </div>
                   <div class="w-8 h-8 rounded-xl ${active ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-600'} flex items-center justify-center font-extrabold text-xs">
                     <i class="fa-solid ${tab.icon}"></i>
@@ -2933,46 +3030,110 @@
             }).join('')}
           </div>
 
-          <!-- Pilih Paket Jadwal Ujian, Saklar Acak Soal/Opsi & Tombol Impor -->
+          <!-- NOTIFIKASI SINKRONISASI OTOMATIS JIKA ADA MAPEL DATA MASTER YANG BELUM PUNYA PAKET SOAL -->
+          ${unlinkedMasterSubjects.length > 0 ? `
+            <div class="glass-card p-4 rounded-2xl bg-indigo-50/95 border border-indigo-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div class="flex items-start sm:items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i>
+                </div>
+                <div>
+                  <div class="text-xs sm:text-sm font-extrabold text-slate-900">
+                    Terdeteksi ${unlinkedMasterSubjects.length} Mata Pelajaran di Data Master yang belum memiliki Paket Bank Soal ${state.examBankLevelFilter === 'ALL' ? '' : 'untuk Kelas ' + state.examBankLevelFilter}
+                  </div>
+                  <p class="text-[11px] text-slate-600 mt-0.5">
+                    Mata Pelajaran: <strong>${unlinkedMasterSubjects.map(u => escapeHtml(u.name)).join(', ')}</strong>. Klik tombol di samping untuk mengaktifkan Bank Soal seluruh mata pelajaran tersebut sekaligus.
+                  </p>
+                </div>
+              </div>
+              <button type="button" onclick="window.app.syncAllMasterSubjectsToBankSoal()" class="btn-3d whitespace-nowrap px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-md">
+                <i class="fa-solid fa-bolt mr-1.5"></i>Aktifkan Semua Mapel Data Master (${unlinkedMasterSubjects.length})
+              </button>
+            </div>
+          ` : ''}
+
+          <!-- Pilih Mata Pelajaran (Data Master) & Paket Jadwal Ujian, Saklar Acak Soal/Opsi & Tombol Impor -->
           <div class="glass-card p-5 rounded-2xl space-y-4">
-            <div class="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
-              <div class="flex-1">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+              <!-- Dropdown 1: Pilih Mata Pelajaran dari Data Master -->
+              <div class="lg:col-span-4">
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Pilih Paket Ujian ${state.examBankLevelFilter === 'ALL' ? '(Semua Tingkat)' : '(Khusus Tingkat Kelas ' + state.examBankLevelFilter + ')'}:
+                  1. Filter Mata Pelajaran (Data Master):
+                </label>
+                <select onchange="window.app.setExamBankSubjectFilter(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
+                  <option value="ALL">Semua Mata Pelajaran (${subjectsForCurrentLevel.length} Mapel)</option>
+                  ${subjectsForCurrentLevel.map(s => {
+                    const hasPkg = state.exams.some(ex =>
+                      normalizeSubjectKey(ex.subject) === normalizeSubjectKey(s.name) &&
+                      doesExamMatchLevelFilter(ex, state.examBankLevelFilter)
+                    );
+                    return `<option value="${escapeHtml(s.name)}" ${normalizeSubjectKey(state.examBankSubjectFilter) === normalizeSubjectKey(s.name) ? 'selected' : ''}>${escapeHtml(s.name)} (${escapeHtml(s.code)})${hasPkg ? '' : ' - [Klik untuk Buat Paket Soal]'}</option>`;
+                  }).join('')}
+                </select>
+              </div>
+
+              <!-- Dropdown 2: Pilih Paket Ujian / Bank Soal -->
+              <div class="lg:col-span-5">
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  2. Pilih Paket Ujian ${state.examBankLevelFilter === 'ALL' ? '(Semua Tingkat)' : '(Kelas ' + state.examBankLevelFilter + ')'}:
                 </label>
                 ${filteredExamsByLevel.length === 0 ? `
-                  <div class="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800">
-                    Belum ada jadwal/paket ujian untuk Tingkat Kelas ${state.examBankLevelFilter}. Silakan buat terlebih dahulu di menu Jadwal Ujian.
+                  <div class="flex items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
+                    <span>
+                      ${state.examBankSubjectFilter !== 'ALL'
+                        ? `Mapel "${escapeHtml(state.examBankSubjectFilter)}" belum memiliki paket soal di tingkat ini.`
+                        : `Belum ada paket soal untuk filter ini.`}
+                    </span>
+                    ${state.examBankSubjectFilter !== 'ALL' ? `
+                      <button type="button" onclick="window.app.createQuickExamPackageForSubject('${escapeHtml(state.examBankSubjectFilter)}')" class="btn-3d px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-extrabold whitespace-nowrap">
+                        <i class="fa-solid fa-plus mr-1"></i>Buat Paket Sekarang
+                      </button>
+                    ` : ''}
                   </div>
                 ` : `
                   <select onchange="window.app.selectExamForQuestions(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
-                    ${filteredExamsByLevel.map(e => `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[Tingkat ${getExamGradeLevel(e)} &bull; ${escapeHtml(e.subject)} - Kelas ${escapeHtml(e.target_class)}] ${escapeHtml(e.title)}</option>`).join('')}
+                    ${filteredExamsByLevel.map(e => {
+                      const qLen = state.questions.filter(q => q.exam_id === e.id).length;
+                      return `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[${escapeHtml(e.subject)} &bull; Kelas ${escapeHtml(e.target_class || 'Semua')}] ${escapeHtml(e.title)} (${qLen} Soal)</option>`;
+                    }).join('')}
                   </select>
                 `}
               </div>
 
-              <!-- 3 Metode Impor Unggulan -->
-              <div class="flex flex-wrap gap-2 pt-2 md:pt-5">
-                <label class="btn-3d cursor-pointer px-3.5 py-2.5 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
+              <!-- Tombol Buat Paket Baru untuk Mapel Terpilih -->
+              <div class="lg:col-span-3 flex justify-end">
+                <button type="button" onclick="window.app.createQuickExamPackageForSubject(state.examBankSubjectFilter !== 'ALL' ? state.examBankSubjectFilter : '')" class="btn-3d w-full py-2.5 px-3.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-extrabold">
+                  <i class="fa-solid fa-folder-plus mr-1.5"></i>Buat Paket Bank Soal Baru
+                </button>
+              </div>
+            </div>
+
+            <!-- 3 Metode Impor Unggulan -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200/70">
+              <span class="text-xs font-bold text-slate-600">
+                <i class="fa-solid fa-file-import mr-1.5 text-blue-600"></i>Impor Butir Soal Cepat ke Paket Aktif:
+              </span>
+              <div class="flex flex-wrap gap-2">
+                <label class="btn-3d cursor-pointer px-3.5 py-2 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
                   <i class="fa-solid fa-file-word mr-1.5"></i>Impor Word (.docx / .doc / .txt)
                   <input type="file" accept=".docx,.doc,.txt,.rtf" class="hidden" onchange="window.app.importQuestionsWord(event)" />
                 </label>
-                <label class="btn-3d cursor-pointer px-3.5 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                <label class="btn-3d cursor-pointer px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
                   <i class="fa-solid fa-file-excel mr-1.5"></i>Impor Excel/CSV
                   <input type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="window.app.importQuestionsExcel(event)" />
                 </label>
-                <button onclick="document.getElementById('modal-import-gform').classList.remove('hidden')" class="btn-3d px-3.5 py-2.5 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold">
+                <button onclick="window.app.openGFormModal()" class="btn-3d px-3.5 py-2 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold">
                   <i class="fa-brands fa-wpforms mr-1.5"></i>Impor Google Form / Teks
                 </button>
               </div>
             </div>
 
             ${currentExam ? `
-              <!-- Bar Pengaturan Cepat Acak Soal & Acak Opsi/Kunci Jawaban -->
+              <!-- Bar Pengaturan Cepat Acak Soal & Acak Opsi/Kunci Jawaban + Hapus Semua Soal -->
               <div class="pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
                 <div class="text-xs text-slate-600 font-semibold flex items-center gap-2">
                   <i class="fa-solid fa-sliders text-blue-600"></i>
-                  <span>Pengaturan Pengacakan Paket Soal Ini:</span>
+                  <span>Pengaturan Paket <strong>${escapeHtml(currentExam.subject)}</strong> (${examQuestions.length} Soal):</span>
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" onclick="window.app.toggleExamShuffle('${currentExam.id}', 'shuffle_questions')" class="btn-3d px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-2 border ${currentExam.shuffle_questions ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-500/20' : 'bg-white text-slate-700 border-slate-200'}">
@@ -2992,13 +3153,19 @@
           <!-- Daftar Butir Soal -->
           <div class="space-y-3">
             ${!currentExam ? `
-              <div class="glass-card p-8 rounded-2xl text-center text-slate-400 text-sm">
-                Silakan buat Jadwal Ujian terlebih dahulu pada menu <strong>Jadwal Ujian</strong>.
+              <div class="glass-card p-8 rounded-2xl text-center text-slate-500 text-sm space-y-3">
+                <i class="fa-solid fa-book-open-reader text-3xl text-blue-500 block"></i>
+                <div>Pilih Mata Pelajaran pada dropdown di atas atau klik <strong>Buat Paket Bank Soal Baru</strong> untuk mulai menginput soal.</div>
+                ${unlinkedMasterSubjects.length > 0 ? `
+                  <button type="button" onclick="window.app.syncAllMasterSubjectsToBankSoal()" class="btn-3d px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-extrabold">
+                    <i class="fa-solid fa-bolt mr-1.5"></i>Aktifkan Semua Mata Pelajaran Data Master Sekarang
+                  </button>
+                ` : ''}
               </div>
             ` : examQuestions.length === 0 ? `
               <div class="glass-card p-10 rounded-2xl text-center text-slate-400 text-sm">
                 <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>
-                Belum ada butir soal pada paket ujian ini. Gunakan tombol <strong>Tambah Soal Manual</strong> atau <strong>Impor Word/Excel</strong> di atas.
+                Belum ada butir soal untuk <strong>${escapeHtml(currentExam.subject)} (${escapeHtml(currentExam.title)})</strong>. Gunakan tombol <strong>Tambah Soal Manual</strong> atau <strong>Impor Word/Excel</strong> di atas.
               </div>
             ` : examQuestions.map(q => `
               <div class="glass-card hover-lift p-5 rounded-2xl">
@@ -3117,51 +3284,209 @@
     }
 
     // ============================================================================
-    // MENU REKAP NILAI & EKSPOR EXCEL
+    // MENU REKAP NILAI & EKSPOR EXCEL (DENGAN FILTER PER KELAS & MATA PELAJARAN + FITUR HAPUS)
     // ============================================================================
+    function getFilteredResultSessions() {
+      const f = state.resultFilters;
+      const q = String(f.search || '').toLowerCase().trim();
+
+      return state.exam_sessions.filter(ses => {
+        // 1. Filter status sesi (Default: 'completed' / Selesai, atau 'ALL' untuk semua status)
+        if (f.status === 'completed' && ses.status !== 'completed') return false;
+
+        const std = state.students.find(s => s.id === ses.student_id) || {};
+        const ex = state.exams.find(e => e.id === ses.exam_id) || {};
+
+        // 2. Filter Kelas / Tingkat Kelas
+        if (f.className !== 'ALL') {
+          const sCls = String(std.class_name || '').trim();
+          if (f.className === 'LEVEL_VII') {
+            if (!sCls.startsWith('VII')) return false;
+          } else if (f.className === 'LEVEL_VIII') {
+            if (!sCls.startsWith('VIII')) return false;
+          } else if (f.className === 'LEVEL_IX') {
+            if (!sCls.startsWith('IX')) return false;
+          } else {
+            if (sCls !== f.className) return false;
+          }
+        }
+
+        // 3. Filter Mata Pelajaran
+        if (f.subject !== 'ALL') {
+          if (normalizeSubjectKey(ex.subject) !== normalizeSubjectKey(f.subject)) return false;
+        }
+
+        // 4. Filter Pencarian Nama Siswa / NISN / Judul Ujian
+        if (q) {
+          const matchName = String(std.name || '').toLowerCase().includes(q);
+          const matchNisn = String(std.nisn || '').toLowerCase().includes(q);
+          const matchTitle = String(ex.title || '').toLowerCase().includes(q);
+          if (!matchName && !matchNisn && !matchTitle) return false;
+        }
+
+        return true;
+      });
+    }
+
     function renderAdminResultsTab(container) {
-      const completed = state.exam_sessions.filter(s => s.status === 'completed');
+      const allSubjectsList = getAllMasterAndExamSubjects();
+      const filteredSessions = getFilteredResultSessions();
+
+      // Hitung ringkasan statistik untuk sesi terfilter
+      const scores = filteredSessions.map(s => Number(s.score ?? 0));
+      const avgScore = scores.length > 0
+        ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+        : '0.0';
+      const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+      const minScore = scores.length > 0 ? Math.min(...scores) : 0;
 
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h1 class="text-2xl font-extrabold text-slate-900">Rekap Nilai & Hasil Ujian</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Daftar nilai akhir peserta ujian yang dapat diunduh langsung ke dalam format Excel.</p>
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Laporan Hasil Evaluasi</span>
+              <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Rekap Nilai & Hasil Ujian</h1>
+              <p class="text-xs sm:text-sm text-slate-500">Filter rekapitulasi nilai berdasarkan <strong>Kelas</strong> dan <strong>Mata Pelajaran</strong>, unduh ke Excel (.xlsx), atau hapus data nilai.</p>
             </div>
-            <button onclick="window.app.exportResultsExcel()" class="btn-3d px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">
-              <i class="fa-solid fa-file-excel mr-1.5"></i>Unduh Rekap Nilai (.xlsx)
-            </button>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="window.app.exportResultsExcel()" class="btn-3d px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md">
+                <i class="fa-solid fa-file-excel mr-1.5"></i>Unduh Rekap Nilai (${filteredSessions.length})
+              </button>
+              <button onclick="window.app.deleteFilteredResults()" ${filteredSessions.length === 0 ? 'disabled' : ''} class="btn-3d px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-md disabled:opacity-40">
+                <i class="fa-solid fa-trash-can mr-1.5"></i>Hapus Rekap Terfilter (${filteredSessions.length})
+              </button>
+            </div>
           </div>
 
+          <!-- Ringkasan Statistik Rekap Sesuai Filter -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="glass-card p-4 rounded-2xl">
+              <div class="text-xs font-bold text-slate-500">Peserta Terfilter</div>
+              <div class="text-2xl font-extrabold text-slate-900 mt-1">${filteredSessions.length}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Dari ${state.exam_sessions.length} total sesi</div>
+            </div>
+            <div class="glass-card p-4 rounded-2xl">
+              <div class="text-xs font-bold text-slate-500">Rata-rata Nilai</div>
+              <div class="text-2xl font-extrabold text-blue-600 mt-1">${avgScore}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Skala 0 - 100</div>
+            </div>
+            <div class="glass-card p-4 rounded-2xl">
+              <div class="text-xs font-bold text-slate-500">Nilai Tertinggi</div>
+              <div class="text-2xl font-extrabold text-emerald-600 mt-1">${maxScore}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Capaian maksimum</div>
+            </div>
+            <div class="glass-card p-4 rounded-2xl">
+              <div class="text-xs font-bold text-slate-500">Nilai Terendah</div>
+              <div class="text-2xl font-extrabold text-amber-600 mt-1">${minScore}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">Capaian minimum</div>
+            </div>
+          </div>
+
+          <!-- Bar Filter Rekap per Kelas, Mata Pelajaran, Status & Pencarian -->
+          <div class="glass-card p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+            <!-- 1. Pilihan Filter Kelas -->
+            <div class="lg:col-span-3">
+              <label class="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                <i class="fa-solid fa-chalkboard mr-1 text-blue-600"></i>Pilih Kelas / Rombel:
+              </label>
+              <select onchange="window.app.updateResultFilter('className', this.value)" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800">
+                <option value="ALL" ${state.resultFilters.className === 'ALL' ? 'selected' : ''}>Semua Kelas</option>
+                <option value="LEVEL_VII" ${state.resultFilters.className === 'LEVEL_VII' ? 'selected' : ''}>Semua Tingkat VII</option>
+                <option value="LEVEL_VIII" ${state.resultFilters.className === 'LEVEL_VIII' ? 'selected' : ''}>Semua Tingkat VIII</option>
+                <option value="LEVEL_IX" ${state.resultFilters.className === 'LEVEL_IX' ? 'selected' : ''}>Semua Tingkat IX</option>
+                ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${state.resultFilters.className === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- 2. Pilihan Filter Mata Pelajaran -->
+            <div class="lg:col-span-3">
+              <label class="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                <i class="fa-solid fa-book-open mr-1 text-indigo-600"></i>Pilih Mata Pelajaran:
+              </label>
+              <select onchange="window.app.updateResultFilter('subject', this.value)" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800">
+                <option value="ALL" ${state.resultFilters.subject === 'ALL' ? 'selected' : ''}>Semua Mata Pelajaran</option>
+                ${allSubjectsList.map(sub => `<option value="${escapeHtml(sub.name)}" ${normalizeSubjectKey(state.resultFilters.subject) === normalizeSubjectKey(sub.name) ? 'selected' : ''}>${escapeHtml(sub.name)}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- 3. Filter Status Pengerjaan -->
+            <div class="lg:col-span-2">
+              <label class="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                <i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i>Status Sesi:
+              </label>
+              <select onchange="window.app.updateResultFilter('status', this.value)" class="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800">
+                <option value="completed" ${state.resultFilters.status === 'completed' ? 'selected' : ''}>Selesai Ujian</option>
+                <option value="ALL" ${state.resultFilters.status === 'ALL' ? 'selected' : ''}>Semua Status</option>
+              </select>
+            </div>
+
+            <!-- 4. Pencarian Nama / NISN & Tombol Reset Filter -->
+            <div class="lg:col-span-4 flex gap-2">
+              <div class="flex-1">
+                <label class="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                  <i class="fa-solid fa-magnifying-glass mr-1 text-slate-500"></i>Cari Nama / NISN:
+                </label>
+                <input type="text" value="${escapeHtml(state.resultFilters.search)}" oninput="window.app.updateResultFilter('search', this.value)" placeholder="Ketik nama atau NISN..." class="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="button" onclick="window.app.resetResultFilters()" class="btn-3d px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold self-end" title="Reset Filter">
+                <i class="fa-solid fa-filter-circle-xmark"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tabel Hasil Nilai Ujian -->
           <div class="glass-card rounded-2xl p-5">
-            ${completed.length === 0 ? `
-              <div class="text-center py-10 text-slate-400 text-sm">Belum ada data nilai ujian yang selesai dikerjakan.</div>
+            ${filteredSessions.length === 0 ? `
+              <div class="text-center py-10 text-slate-400 text-sm">
+                <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>
+                Tidak ada data nilai ujian yang sesuai dengan filter Kelas & Mata Pelajaran di atas.
+              </div>
             ` : `
               <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-xs sm:text-sm">
                   <thead>
                     <tr class="border-b border-slate-200 text-slate-500 uppercase text-[11px]">
+                      <th class="py-3 px-3">No</th>
                       <th class="py-3 px-3">NISN</th>
                       <th class="py-3 px-3">Nama Siswa</th>
                       <th class="py-3 px-3">Kelas</th>
-                      <th class="py-3 px-3">Mata Pelajaran</th>
+                      <th class="py-3 px-3">Mata Pelajaran / Paket</th>
                       <th class="py-3 px-3">Pelanggaran</th>
+                      <th class="py-3 px-3">Status</th>
                       <th class="py-3 px-3">Nilai Akhir</th>
+                      <th class="py-3 px-3 text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200/60">
-                    ${completed.map(ses => {
+                    ${filteredSessions.map((ses, idx) => {
                       const std = state.students.find(s => s.id === ses.student_id) || {};
                       const ex = state.exams.find(e => e.id === ses.exam_id) || {};
+                      const statusBadge = ses.status === 'completed'
+                        ? '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Selesai</span>'
+                        : ses.status === 'blocked'
+                        ? '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">Diblokir</span>'
+                        : '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">Mengerjakan</span>';
+
                       return `
                         <tr class="hover:bg-blue-50/40 transition">
-                          <td class="py-3 px-3 font-mono font-bold">${escapeHtml(std.nisn || '-')}</td>
-                          <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(std.name || '-')}</td>
-                          <td class="py-3 px-3">${escapeHtml(std.class_name || '-')}</td>
-                          <td class="py-3 px-3">${escapeHtml(ex.subject || '-')}</td>
+                          <td class="py-3 px-3 font-bold text-slate-500">${idx + 1}</td>
+                          <td class="py-3 px-3 font-mono font-bold text-blue-700">${escapeHtml(std.nisn || '-')}</td>
+                          <td class="py-3 px-3 font-bold text-slate-900">${escapeHtml(std.name || 'Siswa Terhapus')}</td>
+                          <td class="py-3 px-3"><span class="px-2.5 py-0.5 rounded-lg bg-slate-100 font-bold text-xs">${escapeHtml(std.class_name || '-')}</span></td>
+                          <td class="py-3 px-3">
+                            <div class="font-bold text-slate-800">${escapeHtml(ex.subject || '-')}</div>
+                            <div class="text-[11px] text-slate-500">${escapeHtml(ex.title || '-')}</div>
+                          </td>
                           <td class="py-3 px-3">${ses.violation_count || 0}x</td>
-                          <td class="py-3 px-3"><span class="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 font-extrabold text-sm">${ses.score ?? 0}</span></td>
+                          <td class="py-3 px-3">${statusBadge}</td>
+                          <td class="py-3 px-3">
+                            <span class="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 font-extrabold text-sm">${ses.score ?? 0}</span>
+                          </td>
+                          <td class="py-3 px-3 text-right whitespace-nowrap">
+                            <button onclick="window.app.deleteSingleResultSession('${ses.id}')" class="btn-3d px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold" title="Hapus Data Nilai Ini">
+                              <i class="fa-solid fa-trash-can mr-1"></i>Hapus
+                            </button>
+                          </td>
                         </tr>
                       `;
                     }).join('')}
@@ -3857,7 +4182,6 @@
             state.students = state.students.filter(s => !targetIds.includes(s.id));
             state.exam_sessions = state.exam_sessions.filter(ses => !targetIds.includes(ses.student_id));
           } else {
-            // Hapus secara bertahap (per 100 ID) agar aman dari batas panjang URL Supabase
             const chunkSize = 100;
             for (let i = 0; i < targetIds.length; i += chunkSize) {
               const batch = targetIds.slice(i, i + chunkSize);
@@ -3884,8 +4208,6 @@
         ];
 
         const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
-
-        // Kunci format kolom NISN, KELAS, dan NOMOR_UJIAN sebagai Teks ('@') agar angka 0 di depan NISN tidak hilang di Excel
         const range = XLSX.utils.decode_range(ws['!ref']);
         for (let R = 1; R <= range.e.r; ++R) {
           ['B', 'E', 'F'].forEach(col => {
@@ -3897,14 +4219,13 @@
           });
         }
 
-        // Atur lebar kolom agar rapi dan mudah diisi oleh Admin
         ws['!cols'] = [
-          { wch: 6 },  // NO
-          { wch: 16 }, // NISN
-          { wch: 32 }, // NAMA_LENGKAP
-          { wch: 16 }, // JENIS_KELAMIN
-          { wch: 12 }, // KELAS
-          { wch: 18 }  // NOMOR_UJIAN
+          { wch: 6 },
+          { wch: 16 },
+          { wch: 32 },
+          { wch: 16 },
+          { wch: 12 },
+          { wch: 18 }
         ];
 
         const wb = XLSX.utils.book_new();
@@ -3928,14 +4249,12 @@
             const firstSheetName = wb.SheetNames[0];
             const sheet = wb.Sheets[firstSheetName];
 
-            // Baca sebagai matriks baris 2D agar tahan terhadap spasi/perbedaan nama kolom header
             const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
             if (!matrix || matrix.length === 0) {
               showToast('File Excel/CSV kosong atau tidak terbaca.', 'warning');
               return;
             }
 
-            // Cari baris header secara pintar di 10 baris pertama
             let headerRowIndex = -1;
             let colMap = { nisn: -1, name: -1, gender: -1, className: -1, examNum: -1 };
 
@@ -3955,7 +4274,6 @@
               }
             }
 
-            // Jika header tidak ditemukan, gunakan urutan kolom standar (A=NISN, B=NAMA, C=JK, D=KELAS atau A=NO, B=NISN, C=NAMA, D=JK, E=KELAS)
             let startRow = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
             if (headerRowIndex === -1) {
               const firstRow = matrix[0] || [];
@@ -3967,7 +4285,6 @@
               }
             }
 
-            // Helper normalisasi penulisan kelas (misal "7.1" -> "VII.1", "Kelas IX-2" -> "IX.2")
             const normalizeClassName = (rawCls) => {
               let cl = String(rawCls || '').toUpperCase().trim();
               if (!cl) return state.classes[0]?.class_name || 'VII.1';
@@ -3985,34 +4302,27 @@
               const row = matrix[r];
               if (!row || row.length === 0) continue;
 
-              // Bersihkan tanda kutip atau spasi pada NISN
               let rawNisn = String(row[colMap.nisn] ?? '').trim().replace(/^['`]+/, '').replace(/\s+/g, '');
               const name = String(row[colMap.name] ?? '').trim();
 
               if (!rawNisn || !name) continue;
-              // Lewati jika baris ini masih merupakan teks judul/header
               if (rawNisn.toLowerCase() === 'nisn' || name.toLowerCase().includes('nama lengkap')) continue;
 
-              // Jika NISN berupa angka 7-9 digit (karena angka 0 di depan terpotong oleh Excel), tambahkan 0 di depan hingga 10 digit
               if (/^\d{7,9}$/.test(rawNisn)) {
                 rawNisn = rawNisn.padStart(10, '0');
               }
 
-              // Cek duplikat NISN
               if (state.students.some(s => s.nisn === rawNisn) || newStudents.some(s => s.nisn === rawNisn)) {
                 skipped++;
                 continue;
               }
 
-              // Normalisasi Jenis Kelamin (L / P)
               const rawGender = colMap.gender !== -1 ? String(row[colMap.gender] ?? 'L').trim().toUpperCase() : 'L';
               const gender = (rawGender.startsWith('P') || rawGender.startsWith('W')) ? 'P' : 'L';
 
-              // Normalisasi Kelas
               const rawClass = colMap.className !== -1 ? row[colMap.className] : 'VII.1';
               const class_name = normalizeClassName(rawClass);
 
-              // Nomor Ujian
               const rawExamNum = colMap.examNum !== -1 ? String(row[colMap.examNum] ?? '').trim() : '';
               const exam_number = rawExamNum || `26-${class_name.replace(/[^A-Z0-9]/g, '')}-${rawNisn.slice(-3)}`;
 
@@ -4040,7 +4350,6 @@
               return;
             }
 
-            // Simpan ke Database Supabase secara bertahap (batch) agar stabil
             if (IS_PREVIEW) {
               newStudents.forEach((ns, i) => state.students.push({ id: 'std-imp-' + Date.now() + '-' + i, ...ns }));
             } else {
@@ -4191,6 +4500,33 @@
         }
         showSuccessLogoPopup();
         renderApp();
+      },
+
+      // Buka atau Buat Otomatis Paket Bank Soal langsung dari Kartu Mata Pelajaran di Data Master
+      async openBankSoalForSubject(subjectName, subjectLevel = 'Semua') {
+        const cleanLevel = ['VII', 'VIII', 'IX'].includes(String(subjectLevel).toUpperCase().trim())
+          ? String(subjectLevel).toUpperCase().trim()
+          : 'ALL';
+
+        state.examBankLevelFilter = cleanLevel;
+        state.examBankSubjectFilter = subjectName;
+
+        // Cek apakah sudah ada paket ujian untuk mata pelajaran ini
+        let existingExam = state.exams.find(ex =>
+          normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
+          doesExamMatchLevelFilter(ex, cleanLevel)
+        );
+
+        if (!existingExam) {
+          existingExam = await window.app.createQuickExamPackageForSubject(subjectName, true);
+        }
+
+        if (existingExam) {
+          state.selectedExamId = existingExam.id;
+        }
+        state.adminTab = 'exams';
+        renderApp();
+        triggerTransitionShadow();
       },
 
       // ----------------- MANAJEMEN GURU PENGAMPU (+ IMPOR EXCEL) -----------------
@@ -4389,6 +4725,8 @@
       async deleteAcademicPeriod(id) {
         const ay = state.academic_years.find(a => a.id === id);
         if (!ay) return;
+        const ok = await customConfirm(`Hapus periode Tahun Ajaran ${ay.year_name} (${ay.semester})?`, 'Hapus Tahun Ajaran');
+        if (!ok) return;
         if (IS_PREVIEW) {
           state.academic_years = state.academic_years.filter(a => a.id !== id);
         } else {
@@ -4397,18 +4735,6 @@
           await loadAllAdminData();
         }
         showToast(`Periode TA ${ay.year_name} dihapus`, 'info');
-        renderApp();
-      },
-
-      async activateAcademicPeriod(id) {
-        if (IS_PREVIEW) {
-          state.academic_years.forEach(a => a.is_active = (a.id === id));
-        } else {
-          await supabase.from('academic_years').update({ is_active: false }).neq('id', id);
-          await supabase.from('academic_years').update({ is_active: true }).eq('id', id);
-          await loadAllAdminData();
-        }
-        showToast('Periode aktif berhasil diubah', 'success');
         renderApp();
       },
 
@@ -4625,9 +4951,13 @@
         e.preventDefault();
         const id = document.getElementById('form-schedule-id').value;
         const period = getActiveAcademicPeriod();
+        const selectedSubjectName = document.getElementById('form-schedule-subject').value;
+        const masterSub = state.subjects.find(s => normalizeSubjectKey(s.name) === normalizeSubjectKey(selectedSubjectName));
+
         const payload = {
           title: document.getElementById('form-schedule-title').value.trim(),
-          subject: document.getElementById('form-schedule-subject').value,
+          subject: selectedSubjectName,
+          subject_code: masterSub?.code || '',
           target_class: document.getElementById('form-schedule-class').value,
           exam_date: document.getElementById('form-schedule-date').value,
           start_time: document.getElementById('form-schedule-start').value,
@@ -4718,6 +5048,7 @@
         if (ex) {
           const lvl = getExamGradeLevel(ex);
           state.examBankLevelFilter = ['VII', 'VIII', 'IX'].includes(lvl) ? lvl : 'ALL';
+          state.examBankSubjectFilter = 'ALL';
         }
         state.selectedExamId = examId;
         state.adminTab = 'exams';
@@ -4752,13 +5083,46 @@
         triggerTransitionShadow();
       },
 
-      // ----------------- MANAJEMEN BANK SOAL & IMPOR (PISAH KELAS VII, VIII, IX) -----------------
+      // ----------------- MANAJEMEN BANK SOAL & IMPOR (TERINTEGRASI DATA MASTER MAPEL) -----------------
       setExamBankLevel(level) {
         state.examBankLevelFilter = level;
-        const matching = state.exams.filter(ex => level === 'ALL' || getExamGradeLevel(ex) === level);
+        const matching = state.exams.filter(ex => {
+          const matchLvl = doesExamMatchLevelFilter(ex, level);
+          const matchSub = state.examBankSubjectFilter === 'ALL'
+            || normalizeSubjectKey(ex.subject) === normalizeSubjectKey(state.examBankSubjectFilter);
+          return matchLvl && matchSub;
+        });
         state.selectedExamId = matching.length > 0 ? matching[0].id : null;
         renderApp();
         triggerTransitionShadow();
+      },
+
+      async setExamBankSubjectFilter(subjectName) {
+        state.examBankSubjectFilter = subjectName;
+        const matching = state.exams.filter(ex => {
+          const matchLvl = doesExamMatchLevelFilter(ex, state.examBankLevelFilter);
+          const matchSub = subjectName === 'ALL'
+            || normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName);
+          return matchLvl && matchSub;
+        });
+
+        if (matching.length > 0) {
+          state.selectedExamId = matching[0].id;
+          renderApp();
+          triggerTransitionShadow();
+        } else if (subjectName !== 'ALL') {
+          // Jika mata pelajaran dari Data Master belum memiliki paket ujian di tingkat ini, otomatis buatkan paketnya agar bisa langsung input soal!
+          const created = await window.app.createQuickExamPackageForSubject(subjectName, true);
+          if (created) {
+            state.selectedExamId = created.id;
+          }
+          renderApp();
+          triggerTransitionShadow();
+        } else {
+          state.selectedExamId = null;
+          renderApp();
+          triggerTransitionShadow();
+        }
       },
 
       selectExamForQuestions(examId) {
@@ -4767,12 +5131,190 @@
         triggerTransitionShadow();
       },
 
-      openQuestionModal(id = null) {
-        if (!state.selectedExamId) {
-          showToast('Pilih atau buat Jadwal Ujian terlebih dahulu!', 'warning');
+      // Buat Paket Bank Soal Otomatis dari Mata Pelajaran Data Master
+      async createQuickExamPackageForSubject(subjectName = '', silentAuto = false) {
+        const allSubjects = getAllMasterAndExamSubjects();
+        let chosenSubject = subjectName;
+
+        if (!chosenSubject) {
+          const defaultSub = allSubjects[0]?.name || 'Bahasa Indonesia';
+          const inputSub = await customPrompt(
+            'Ketik atau konfirmasi nama Mata Pelajaran untuk Paket Bank Soal baru:',
+            defaultSub,
+            'Buat Paket Bank Soal Baru'
+          );
+          if (!inputSub) return null;
+          chosenSubject = inputSub.trim();
+        }
+
+        const masterSub = state.subjects.find(s => normalizeSubjectKey(s.name) === normalizeSubjectKey(chosenSubject));
+        const levelFromTab = state.examBankLevelFilter !== 'ALL'
+          ? state.examBankLevelFilter
+          : (masterSub && ['VII', 'VIII', 'IX'].includes(String(masterSub.level).toUpperCase().trim())
+              ? String(masterSub.level).toUpperCase().trim()
+              : 'Semua');
+
+        const targetClass = ['VII', 'VIII', 'IX'].includes(levelFromTab)
+          ? `Semua ${levelFromTab}`
+          : 'Semua';
+
+        const defaultTitle = `Bank Soal ${chosenSubject} ${targetClass !== 'Semua' ? '(' + targetClass + ')' : ''}`.trim();
+        let finalTitle = defaultTitle;
+
+        if (!silentAuto) {
+          const promptedTitle = await customPrompt(
+            `Buat Paket Bank Soal untuk Mata Pelajaran "${chosenSubject}".\nMasukkan Judul Paket Soal:`,
+            defaultTitle,
+            'Judul Paket Bank Soal'
+          );
+          if (!promptedTitle) return null;
+          finalTitle = promptedTitle.trim();
+        }
+
+        const period = getActiveAcademicPeriod();
+        const payload = {
+          title: finalTitle,
+          subject: chosenSubject,
+          subject_code: masterSub?.code || '',
+          target_class: targetClass,
+          exam_date: new Date().toISOString().slice(0, 10),
+          start_time: '07:30',
+          end_time: '09:30',
+          proctor_name: '-',
+          room_name: 'Ruang Utama',
+          duration_minutes: 60,
+          max_violations: 3,
+          shuffle_questions: false,
+          shuffle_options: false,
+          is_active: true,
+          academic_year: period.year_name,
+          semester: period.semester
+        };
+
+        showLoadingPopup('Menyiapkan Paket Bank Soal...');
+        try {
+          let createdExam = null;
+          if (IS_PREVIEW) {
+            createdExam = { id: 'ex-' + Date.now(), ...payload };
+            state.exams.unshift(createdExam);
+          } else {
+            const { data, error } = await supabase.from('exams').insert([payload]).select().single();
+            if (error) throw error;
+            createdExam = data;
+            await loadAllAdminData();
+          }
+
+          if (createdExam) {
+            state.selectedExamId = createdExam.id;
+            state.examBankSubjectFilter = chosenSubject;
+          }
+          showToast(`Paket Bank Soal "${chosenSubject}" siap diisi soal!`, 'success');
+          renderApp();
+          return createdExam;
+        } catch (err) {
+          showToast('Gagal membuat paket soal: ' + err.message, 'error');
+          return null;
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
+      // Sinkronkan Sekaligus Seluruh Mata Pelajaran di Data Master yang belum punya Paket Bank Soal
+      async syncAllMasterSubjectsToBankSoal() {
+        const allMasterSubjects = getAllMasterAndExamSubjects();
+        const subjectsForCurrentLevel = allMasterSubjects.filter(s => {
+          if (state.examBankLevelFilter === 'ALL') return true;
+          const sLvl = String(s.level || 'Semua').toUpperCase().trim();
+          return sLvl === 'SEMUA' || sLvl === state.examBankLevelFilter;
+        });
+
+        const unlinked = subjectsForCurrentLevel.filter(sub => {
+          return !state.exams.some(ex =>
+            normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name) &&
+            doesExamMatchLevelFilter(ex, state.examBankLevelFilter)
+          );
+        });
+
+        if (unlinked.length === 0) {
+          showToast('Seluruh Mata Pelajaran Data Master sudah memiliki Paket Bank Soal.', 'info');
           return;
         }
-        document.getElementById('modal-question').classList.remove('hidden');
+
+        const period = getActiveAcademicPeriod();
+        const payloads = unlinked.map(sub => {
+          const subLvl = ['VII', 'VIII', 'IX'].includes(String(sub.level || '').toUpperCase().trim())
+            ? String(sub.level).toUpperCase().trim()
+            : (state.examBankLevelFilter !== 'ALL' ? state.examBankLevelFilter : 'Semua');
+          const targetClass = ['VII', 'VIII', 'IX'].includes(subLvl) ? `Semua ${subLvl}` : 'Semua';
+          return {
+            title: `Bank Soal ${sub.name} ${targetClass !== 'Semua' ? '(Kelas ' + subLvl + ')' : ''}`.trim(),
+            subject: sub.name,
+            subject_code: sub.code || '',
+            target_class: targetClass,
+            exam_date: new Date().toISOString().slice(0, 10),
+            start_time: '07:30',
+            end_time: '09:30',
+            proctor_name: '-',
+            room_name: 'Ruang Utama',
+            duration_minutes: 60,
+            max_violations: 3,
+            shuffle_questions: false,
+            shuffle_options: false,
+            is_active: true,
+            academic_year: period.year_name,
+            semester: period.semester
+          };
+        });
+
+        showLoadingPopup(`Mengaktifkan ${payloads.length} Mata Pelajaran...`);
+        try {
+          if (IS_PREVIEW) {
+            payloads.forEach((p, idx) => state.exams.unshift({ id: 'ex-sync-' + Date.now() + '-' + idx, ...p }));
+          } else {
+            const { data, error } = await supabase.from('exams').insert(payloads).select();
+            if (error) throw error;
+            await loadAllAdminData();
+            if (data && data.length > 0) {
+              state.selectedExamId = data[0].id;
+            }
+          }
+          showToast(`Berhasil mengaktifkan ${payloads.length} Mata Pelajaran dari Data Master ke Bank Soal!`, 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menyinkronkan mata pelajaran: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
+      async ensureSelectedExamPackageBeforeInput() {
+        if (state.selectedExamId) return true;
+        if (state.examBankSubjectFilter !== 'ALL') {
+          const created = await window.app.createQuickExamPackageForSubject(state.examBankSubjectFilter, true);
+          return !!created;
+        }
+        if (state.subjects.length > 0) {
+          const created = await window.app.createQuickExamPackageForSubject(state.subjects[0].name, false);
+          return !!created;
+        }
+        showToast('Pilih Mata Pelajaran atau buat Paket Bank Soal terlebih dahulu!', 'warning');
+        return false;
+      },
+
+      async openGFormModal() {
+        const ready = await window.app.ensureSelectedExamPackageBeforeInput();
+        if (!ready) return;
+        document.getElementById('modal-import-gform').classList.remove('hidden');
+      },
+
+      async openQuestionModal(id = null) {
+        if (!id) {
+          const ready = await window.app.ensureSelectedExamPackageBeforeInput();
+          if (!ready) return;
+        }
+        const modal = document.getElementById('modal-question');
+        if (!modal) return;
+        modal.classList.remove('hidden');
         const previewDiv = document.getElementById('question-image-preview');
         if (id) {
           const q = state.questions.find(x => x.id === id);
@@ -4811,7 +5353,6 @@
         reader.readAsDataURL(file);
       },
 
-      // Upload Gambar Cepat langsung pada kartu soal tertentu di Bank Soal
       quickUploadQuestionImage(e, questionId) {
         const file = e.target.files[0];
         if (!file) return;
@@ -4901,7 +5442,6 @@
         XLSX.writeFile(wb, 'Template_Soal_PG_Exambro.xlsx');
       },
 
-      // Unduh Template Word (.doc) yang bisa langsung diedit di Microsoft Word
       downloadQuestionWordTemplate() {
         const content = [
           '1. Bacalah kutipan berikut! Gagasan utama paragraf yang terletak di awal paragraf disebut paragraf...',
@@ -4938,9 +5478,14 @@
         showToast('Template Word berhasil diunduh! Simpan sebagai .docx atau salin teksnya setelah diedit.', 'info');
       },
 
-      importQuestionsExcel(e) {
+      async importQuestionsExcel(e) {
         const file = e.target.files[0];
-        if (!file || !state.selectedExamId) return;
+        if (!file) return;
+        const ready = await window.app.ensureSelectedExamPackageBeforeInput();
+        if (!ready) {
+          e.target.value = '';
+          return;
+        }
         const reader = new FileReader();
         reader.onload = async (evt) => {
           const wb = XLSX.read(evt.target.result, { type: 'binary' });
@@ -4966,15 +5511,21 @@
               await loadAllAdminData();
             }
           }
+          e.target.value = '';
           showToast(`Berhasil mengimpor ${items.length} soal dari Excel`, 'success');
           renderApp();
         };
         reader.readAsBinaryString(file);
       },
 
-      importQuestionsWord(e) {
+      async importQuestionsWord(e) {
         const file = e.target.files[0];
-        if (!file || !state.selectedExamId) return;
+        if (!file) return;
+        const ready = await window.app.ensureSelectedExamPackageBeforeInput();
+        if (!ready) {
+          e.target.value = '';
+          return;
+        }
         const ext = file.name.split('.').pop().toLowerCase();
         if (ext === 'docx') {
           const reader = new FileReader();
@@ -4984,14 +5535,16 @@
               await parseStructuredQuestionsText(result.value);
             } catch (err) {
               showToast('Gagal membaca file .docx: ' + err.message, 'error');
+            } finally {
+              e.target.value = '';
             }
           };
           reader.readAsArrayBuffer(file);
         } else {
-          // Mendukung file Template .doc / .txt berbasis teks
           const reader = new FileReader();
           reader.onload = async (evt) => {
             await parseStructuredQuestionsText(evt.target.result);
+            e.target.value = '';
           };
           reader.readAsText(file);
         }
@@ -5003,7 +5556,23 @@
         document.getElementById('modal-import-gform').classList.add('hidden');
       },
 
-      // ----------------- PENGAWASAN & EKSPOR NILAI -----------------
+      // ----------------- PENGAWASAN, FILTER REKAP NILAI, EKSPOR & HAPUS NILAI -----------------
+      updateResultFilter(key, value) {
+        state.resultFilters[key] = value;
+        renderApp();
+      },
+
+      resetResultFilters() {
+        state.resultFilters = {
+          search: '',
+          className: 'ALL',
+          subject: 'ALL',
+          status: 'completed'
+        };
+        renderApp();
+        triggerTransitionShadow();
+      },
+
       async unlockStudentSession(sessionId) {
         if (IS_PREVIEW) {
           const ses = state.exam_sessions.find(s => s.id === sessionId);
@@ -5030,26 +5599,124 @@
         renderApp();
       },
 
+      async deleteSingleResultSession(sessionId) {
+        const ses = state.exam_sessions.find(s => s.id === sessionId);
+        if (!ses) return;
+        const std = state.students.find(s => s.id === ses.student_id) || { name: 'Siswa', class_name: '-' };
+        const ex = state.exams.find(e => e.id === ses.exam_id) || { subject: 'Ujian' };
+
+        const ok = await customConfirm(
+          `Hapus data nilai ujian untuk:\n\nNama: ${std.name}\nKelas: ${std.class_name}\nMata Pelajaran: ${ex.subject}\nNilai: ${ses.score ?? 0}\n\nSiswa yang dihapus nilainya dapat mengikuti ujian kembali jika jadwal masih aktif.`,
+          'Konfirmasi Hapus Nilai'
+        );
+        if (!ok) return;
+
+        showLoadingPopup('Menghapus Data Nilai...');
+        try {
+          if (IS_PREVIEW) {
+            state.exam_sessions = state.exam_sessions.filter(s => s.id !== sessionId);
+          } else {
+            const { error } = await supabase.from('exam_sessions').delete().eq('id', sessionId);
+            if (error) throw error;
+            await loadAllAdminData();
+          }
+          showToast(`Data nilai ${std.name} berhasil dihapus`, 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus nilai: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
+      async deleteFilteredResults() {
+        const filteredSessions = getFilteredResultSessions();
+        if (filteredSessions.length === 0) {
+          showToast('Tidak ada data nilai terfilter untuk dihapus.', 'warning');
+          return;
+        }
+
+        const clsLabel = state.resultFilters.className === 'ALL' ? 'Semua Kelas' : state.resultFilters.className;
+        const subLabel = state.resultFilters.subject === 'ALL' ? 'Semua Mata Pelajaran' : state.resultFilters.subject;
+
+        const ok = await customConfirm(
+          `PERINGATAN HAPUS REKAP NILAI!\n\nApakah Anda yakin ingin MENGHAPUS ${filteredSessions.length} data nilai ujian dengan filter:\n• Kelas: ${clsLabel}\n• Mata Pelajaran: ${subLabel}\n\nData nilai yang dihapus tidak dapat dikembalikan!`,
+          'Hapus Rekap Nilai Terfilter'
+        );
+        if (!ok) return;
+
+        showLoadingPopup(`Menghapus ${filteredSessions.length} Data Nilai...`);
+        try {
+          const targetIds = filteredSessions.map(s => s.id);
+          if (IS_PREVIEW) {
+            state.exam_sessions = state.exam_sessions.filter(s => !targetIds.includes(s.id));
+          } else {
+            const chunkSize = 100;
+            for (let i = 0; i < targetIds.length; i += chunkSize) {
+              const batch = targetIds.slice(i, i + chunkSize);
+              const { error } = await supabase.from('exam_sessions').delete().in('id', batch);
+              if (error) throw error;
+            }
+            await loadAllAdminData();
+          }
+          showToast(`Berhasil menghapus ${targetIds.length} data rekap nilai ujian!`, 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus rekap nilai: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
       exportResultsExcel() {
-        const rows = state.exam_sessions.map((ses, idx) => {
+        const filteredSessions = getFilteredResultSessions();
+        if (filteredSessions.length === 0) {
+          showToast('Tidak ada data nilai pada filter saat ini untuk diekspor.', 'warning');
+          return;
+        }
+
+        const rows = filteredSessions.map((ses, idx) => {
           const std = state.students.find(s => s.id === ses.student_id) || {};
           const ex = state.exams.find(e => e.id === ses.exam_id) || {};
           return {
             NO: idx + 1,
             NISN: std.nisn || '-',
+            NOMOR_UJIAN: std.exam_number || '-',
             NAMA_SISWA: std.name || '-',
+            JENIS_KELAMIN: std.gender || '-',
             KELAS: std.class_name || '-',
             MATA_PELAJARAN: ex.subject || '-',
             PAKET_UJIAN: ex.title || '-',
+            TANGGAL_UJIAN: formatDateDDMMYYYY(ex.exam_date),
             PELANGGARAN_PINDAH_LAYAR: ses.violation_count || 0,
-            STATUS: ses.status,
+            STATUS: ses.status === 'completed' ? 'Selesai' : ses.status,
             NILAI_AKHIR: ses.score ?? 0
           };
         });
+
         const ws = XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [
+          { wch: 5 },
+          { wch: 15 },
+          { wch: 16 },
+          { wch: 30 },
+          { wch: 14 },
+          { wch: 10 },
+          { wch: 24 },
+          { wch: 30 },
+          { wch: 15 },
+          { wch: 22 },
+          { wch: 12 },
+          { wch: 12 }
+        ];
+
+        const clsTag = state.resultFilters.className === 'ALL' ? 'SemuaKelas' : state.resultFilters.className.replace(/[^a-zA-Z0-9]/g, '');
+        const subTag = state.resultFilters.subject === 'ALL' ? 'SemuaMapel' : state.resultFilters.subject.replace(/[^a-zA-Z0-9]/g, '');
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Rekap_Nilai');
-        XLSX.writeFile(wb, 'Rekap_Nilai_Ujian_Sekolah.xlsx');
+        XLSX.writeFile(wb, `Rekap_Nilai_${clsTag}_${subTag}.xlsx`);
+        showToast(`Berhasil mengunduh ${rows.length} data rekap nilai ke Excel!`, 'success');
       },
 
       // ----------------- ALUR PENGERJAAN UJIAN SISWA (MENDUKUNG ACAK SOAL & ACAK OPSI) -----------------
@@ -5132,10 +5799,8 @@
         }
 
         state.activeExam = ex;
-        // Terapkan Acak Soal dan/atau Acak Opsi Kunci Jawaban sesuai pengaturan paket ujian
         state.activeQuestions = buildPreparedQuestionsForStudent(rawQuestions, ex, state.currentUser.id);
 
-        // Pulihkan pilihan jawaban & sisa waktu dari penyimpanan lokal perangkat (localStorage) jika ada
         const defaultDurationSeconds = (ex.duration_minutes || 60) * 60;
         const localProgress = loadExamProgressLocal(session, defaultDurationSeconds);
         session.answers = localProgress.answers;
@@ -5170,7 +5835,6 @@
 
       selectAnswer(questionId, origOptionLetter) {
         if (!state.activeSession) return;
-        // Simpan instan ke memori & localStorage perangkat siswa (tanpa request ke Supabase per klik)
         state.activeSession.answers = { ...state.activeSession.answers, [questionId]: origOptionLetter };
         saveExamProgressLocal();
         renderApp();
@@ -5218,7 +5882,6 @@
         const score = Math.round((correct / total) * 100);
         const submittedAt = new Date().toISOString();
 
-        // Simpan ke localStorage terlebih dahulu sebagai cadangan aman
         saveExamProgressLocal();
 
         if (!IS_PREVIEW && supabase) {
@@ -5245,7 +5908,6 @@
         state.activeSession.status = 'completed';
         state.activeSession.submitted_at = submittedAt;
 
-        // Bersihkan cache lokal sesi setelah berhasil terkirim ke database Supabase
         clearExamProgressLocal(state.activeSession.id);
 
         if (document.fullscreenElement) {
