@@ -746,7 +746,9 @@
       classFilterLevel: 'ALL',
       subjectSearch: '',
       teacherSearch: '',
+      dashboardFilterClass: 'ALL',
       scheduleFilterClass: 'ALL',
+      scheduleFilterSubject: 'ALL',
       accountFilters: {
         search: '',
         className: 'ALL'
@@ -1446,17 +1448,30 @@
     // TAB 1: MONITORING & DASHBOARD ADMIN
     // ============================================================================
     function renderAdminDashboard(container) {
+      const currentClassFilter = state.dashboardFilterClass || 'ALL';
       const activeStudents = state.students.filter(s => !s.is_archived);
       const activeExams = state.exams.filter(e => e.is_active);
-      const inProgressSessions = state.exam_sessions.filter(s => s.status === 'in_progress');
-      const blockedSessions = state.exam_sessions.filter(s => s.status === 'blocked');
+
+      // Filter sesi ujian berdasarkan pilihan Kelas / Tingkat pada Monitoring
+      const filteredSessions = state.exam_sessions.filter(ses => {
+        if (currentClassFilter === 'ALL') return true;
+        const std = state.students.find(s => s.id === ses.student_id) || {};
+        const sCls = String(std.class_name || '').trim();
+        if (currentClassFilter === 'LEVEL_VII') return sCls.startsWith('VII.');
+        if (currentClassFilter === 'LEVEL_VIII') return sCls.startsWith('VIII.');
+        if (currentClassFilter === 'LEVEL_IX') return sCls.startsWith('IX.');
+        return sCls === currentClassFilter;
+      });
+
+      const inProgressSessions = filteredSessions.filter(s => s.status === 'in_progress');
+      const blockedSessions = filteredSessions.filter(s => s.status === 'blocked');
 
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h1 class="text-2xl font-extrabold text-slate-900">Monitoring & Dashboard Ujian</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Pantau aktivitas pengerjaan ujian dan pelanggaran anti-curang siswa secara langsung.</p>
+              <p class="text-xs sm:text-sm text-slate-500">Pantau aktivitas pengerjaan ujian dan pelanggaran anti-curang siswa secara langsung per kelas.</p>
             </div>
             <button onclick="window.app.refreshAdminData()" class="btn-3d px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-bold shadow-sm">
               <i class="fa-solid fa-rotate mr-1.5 text-blue-600"></i>Segarkan Data
@@ -1489,7 +1504,7 @@
                 <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center"><i class="fa-solid fa-laptop-file"></i></div>
               </div>
               <div class="text-2xl font-extrabold text-indigo-600">${inProgressSessions.length}</div>
-              <div class="text-[11px] text-slate-500 mt-1">Sesi berjalan saat ini</div>
+              <div class="text-[11px] text-slate-500 mt-1">${currentClassFilter === 'ALL' ? 'Semua kelas' : 'Filter kelas aktif'}</div>
             </div>
 
             <div class="glass-card hover-lift p-4 rounded-2xl">
@@ -1502,17 +1517,33 @@
             </div>
           </div>
 
-          <!-- Tabel Monitoring Real-Time -->
+          <!-- Tabel Monitoring Real-Time dengan Filter Kelas -->
           <div class="glass-card rounded-2xl p-5">
-            <h2 class="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <i class="fa-solid fa-satellite-dish text-blue-600"></i>
-              Status Sesi Peserta Ujian Real-Time
-            </h2>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-200/70">
+              <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i class="fa-solid fa-satellite-dish text-blue-600"></i>
+                <span>Status Sesi Peserta Ujian Real-Time (${filteredSessions.length} Sesi)</span>
+              </h2>
 
-            ${state.exam_sessions.length === 0 ? `
+              <!-- Dropdown Filter Kelas Monitoring -->
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs font-bold text-slate-600">
+                  <i class="fa-solid fa-filter text-blue-600 mr-1"></i>Filter Kelas:
+                </span>
+                <select onchange="window.app.setDashboardClassFilter(this.value)" class="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-extrabold text-slate-800">
+                  <option value="ALL" ${currentClassFilter === 'ALL' ? 'selected' : ''}>Semua Kelas (${state.exam_sessions.length})</option>
+                  <option value="LEVEL_VII" ${currentClassFilter === 'LEVEL_VII' ? 'selected' : ''}>Semua Tingkat VII</option>
+                  <option value="LEVEL_VIII" ${currentClassFilter === 'LEVEL_VIII' ? 'selected' : ''}>Semua Tingkat VIII</option>
+                  <option value="LEVEL_IX" ${currentClassFilter === 'LEVEL_IX' ? 'selected' : ''}>Semua Tingkat IX</option>
+                  ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${currentClassFilter === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            ${filteredSessions.length === 0 ? `
               <div class="text-center py-10 text-slate-400 text-sm">
                 <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
-                Belum ada peserta yang memulai sesi ujian.
+                Belum ada peserta pada kelas ini yang memulai sesi ujian.
               </div>
             ` : `
               <div class="overflow-x-auto">
@@ -1528,7 +1559,7 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-200/60">
-                    ${state.exam_sessions.map(ses => {
+                    ${filteredSessions.map(ses => {
                       const std = state.students.find(s => s.id === ses.student_id) || { name: 'Siswa', nisn: '-', class_name: '-' };
                       const ex = state.exams.find(e => e.id === ses.exam_id) || { title: 'Ujian', subject: '-', max_violations: 3 };
                       const badge = ses.status === 'completed'
@@ -2386,86 +2417,93 @@
         return `
           <div class="ktp-exam-card">
             <!-- KOP ATAS KARTU -->
-            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1.2px solid #0f172a; padding-bottom:1.2mm; gap:1.5mm;">
+            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1.2px solid #0f172a; padding-bottom:1mm; gap:1.5mm;">
               <!-- Logo Dinas / Kementerian Sebelah Kiri -->
-              <div style="width:8.5mm; height:8.5mm; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <div style="width:8.2mm; height:8.2mm; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                 ${logoLeftSrc
-                  ? `<img src="${logoLeftSrc}" alt="Logo Dinas" style="max-width:8.5mm; max-height:8.5mm; object-fit:contain;" />`
-                  : `<div style="width:7.5mm; height:7.5mm; border:0.5px dashed #94a3b8; border-radius:1mm; display:flex; align-items:center; justify-content:center; font-size:4pt; color:#64748b; text-align:center;">LOGO DINAS</div>`
+                  ? `<img src="${logoLeftSrc}" alt="Logo Dinas" style="max-width:8.2mm; max-height:8.2mm; object-fit:contain;" />`
+                  : `<div style="width:7.2mm; height:7.2mm; border:0.5px dashed #94a3b8; border-radius:1mm; display:flex; align-items:center; justify-content:center; font-size:4pt; color:#64748b; text-align:center;">LOGO DINAS</div>`
                 }
               </div>
 
               <!-- Teks KOP Tengah -->
-              <div style="flex:1; text-align:center; line-height:1.12; overflow:hidden;">
-                <div style="font-size:4.8pt; font-weight:700; text-transform:uppercase; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              <div style="flex:1; text-align:center; line-height:1.1; overflow:hidden;">
+                <div style="font-size:4.7pt; font-weight:700; text-transform:uppercase; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   ${escapeHtml(cfg.dinas_name)}
                 </div>
-                <div style="font-size:6.2pt; font-weight:800; text-transform:uppercase; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:0.2mm;">
+                <div style="font-size:6.1pt; font-weight:800; text-transform:uppercase; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:0.2mm;">
                   ${escapeHtml(cfg.school_name)}
                 </div>
-                <div style="font-size:4.3pt; font-weight:500; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:0.2mm;">
+                <div style="font-size:4.2pt; font-weight:500; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:0.2mm;">
                   ${escapeHtml(cfg.school_address)}
                 </div>
               </div>
 
               <!-- Logo Sekolah Sebelah Kanan -->
-              <div style="width:8.5mm; height:8.5mm; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <div style="width:8.2mm; height:8.2mm; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                 ${logoRightSrc
-                  ? `<img src="${logoRightSrc}" alt="Logo Sekolah" style="max-width:8.5mm; max-height:8.5mm; object-fit:contain;" />`
-                  : `<div style="width:7.5mm; height:7.5mm; border:0.5px dashed #94a3b8; border-radius:1mm; display:flex; align-items:center; justify-content:center; font-size:4pt; color:#64748b; text-align:center;">LOGO SEKOLAH</div>`
+                  ? `<img src="${logoRightSrc}" alt="Logo Sekolah" style="max-width:8.2mm; max-height:8.2mm; object-fit:contain;" />`
+                  : `<div style="width:7.2mm; height:7.2mm; border:0.5px dashed #94a3b8; border-radius:1mm; display:flex; align-items:center; justify-content:center; font-size:4pt; color:#64748b; text-align:center;">LOGO SEKOLAH</div>`
                 }
               </div>
             </div>
 
             <!-- JUDUL DI BAWAH KOP -->
-            <div style="text-align:center; margin-top:0.8mm; margin-bottom:0.8mm; line-height:1.1;">
-              <div style="font-size:6.2pt; font-weight:800; letter-spacing:0.3px; text-transform:uppercase; color:#1d4ed8;">
+            <div style="text-align:center; margin-top:0.6mm; margin-bottom:0.6mm; line-height:1.08;">
+              <div style="font-size:6pt; font-weight:800; letter-spacing:0.3px; text-transform:uppercase; color:#1d4ed8;">
                 ${escapeHtml(cfg.card_title)}
               </div>
-              <div style="font-size:4.7pt; font-weight:700; color:#334155;">
+              <div style="font-size:4.6pt; font-weight:700; color:#334155;">
                 ${escapeHtml(cfg.card_subtitle)}
               </div>
             </div>
 
             <!-- IDENTITAS PESERTA UJIAN -->
-            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; background:#f8fafc; border:0.5px solid #e2e8f0; border-radius:1.5mm; padding:1.2mm 2mm; font-size:5.4pt; line-height:1.32;">
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; background:#f8fafc; border:0.5px solid #e2e8f0; border-radius:1.5mm; padding:1mm 2mm; font-size:5.3pt; line-height:1.28;">
               <div style="display:flex;">
-                <span style="width:17mm; font-weight:700; color:#475569;">Nama</span>
+                <span style="width:16.5mm; font-weight:700; color:#475569;">Nama</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
                 <span style="flex:1; font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name || '-')}</span>
               </div>
               <div style="display:flex;">
-                <span style="width:17mm; font-weight:700; color:#475569;">Kelas</span>
+                <span style="width:16.5mm; font-weight:700; color:#475569;">Kelas</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
                 <span style="flex:1; font-weight:700; color:#0f172a;">${escapeHtml(s.class_name || '-')}</span>
               </div>
               <div style="display:flex;">
-                <span style="width:17mm; font-weight:700; color:#475569;">NISN</span>
+                <span style="width:16.5mm; font-weight:700; color:#475569;">NISN</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
                 <span style="flex:1; font-family:monospace; font-weight:800; color:#1d4ed8;">${escapeHtml(s.nisn || '-')}</span>
               </div>
               <div style="display:flex;">
-                <span style="width:17mm; font-weight:700; color:#475569;">Kata Sandi</span>
+                <span style="width:16.5mm; font-weight:700; color:#475569;">Kata Sandi</span>
                 <span style="margin-right:1mm; font-weight:700;">:</span>
                 <span style="flex:1; font-family:monospace; font-weight:800; color:#0f172a;">${escapeHtml(passText)}</span>
               </div>
             </div>
 
-            <!-- BAGIAN BAWAH: TEMPAT TANGGAL & KEPALA SEKOLAH -->
-            <div style="display:flex; align-items:flex-end; justify-content:space-between; margin-top:0.8mm; font-size:4.6pt; line-height:1.15;">
-              <div style="color:#64748b; font-size:4.2pt; max-width:34mm;">
+            <!-- BAGIAN BAWAH: TEMPAT TANGGAL & PENGESAHAN KEPALA SEKOLAH (TTD & CAP PRESISI) -->
+            <div style="display:flex; align-items:flex-end; justify-content:space-between; margin-top:0.7mm; font-size:4.6pt; line-height:1.15; position:relative;">
+              <div style="color:#64748b; font-size:4.1pt; max-width:32mm; z-index:1;">
                 <div style="font-weight:700; color:#334155;">Login Exambro CBT</div>
                 <div>Gunakan NISN & Kata Sandi saat masuk ruang ujian.</div>
               </div>
-              <div style="text-align:left; min-width:38mm;">
-                <div style="color:#334155;">${escapeHtml(cfg.city_date)}</div>
-                <div style="font-weight:700; color:#0f172a;">Kepala Sekolah,</div>
-                ${signatureSrc
-                  ? `<div style="height:4.2mm; display:flex; align-items:center; margin:0.2mm 0;"><img src="${signatureSrc}" alt="TTD" style="max-height:4.2mm; max-width:22mm; object-fit:contain;" /></div>`
-                  : `<div style="height:2.8mm;"></div>`
-                }
-                <div style="font-weight:800; color:#0f172a; text-decoration:underline;">${escapeHtml(cfg.principal_name)}</div>
-                <div style="font-weight:600; color:#334155;">NIP. ${escapeHtml(cfg.principal_nip)}</div>
+
+              <!-- Blok Pengesahan Kepala Sekolah dengan Posisi TTD & Cap Presisi di Atas Nama -->
+              <div style="position:relative; text-align:left; min-width:43mm; padding-left:2mm;">
+                <div style="color:#334155; position:relative; z-index:1;">${escapeHtml(cfg.city_date)}</div>
+                <div style="font-weight:700; color:#0f172a; position:relative; z-index:1;">Kepala Sekolah,</div>
+
+                <!-- Ruang TTD & Cap (Floating Presisi di Atas Nama Kepala Sekolah) -->
+                <div style="height:6.2mm; position:relative;">
+                  ${signatureSrc
+                    ? `<img src="${signatureSrc}" alt="TTD dan Cap Kepsek" style="position:absolute; left:-2mm; bottom:-1.6mm; height:11.5mm; width:36mm; max-width:40mm; object-fit:contain; object-position:left center; mix-blend-mode:multiply; z-index:3; pointer-events:none;" />`
+                    : ''
+                  }
+                </div>
+
+                <div style="font-weight:800; color:#0f172a; text-decoration:underline; position:relative; z-index:2;">${escapeHtml(cfg.principal_name)}</div>
+                <div style="font-weight:600; color:#334155; position:relative; z-index:2;">NIP. ${escapeHtml(cfg.principal_nip)}</div>
               </div>
             </div>
           </div>
@@ -2482,12 +2520,35 @@
         return;
       }
 
-      const filteredExams = state.exams.filter(ex => {
-        if (state.scheduleFilterClass === 'ALL') return true;
-        return ex.target_class === state.scheduleFilterClass || ex.target_class === 'Semua';
-      });
-
       const allSubjectsList = getAllMasterAndExamSubjects();
+      const clsFilter = state.scheduleFilterClass || 'ALL';
+      const subFilter = state.scheduleFilterSubject || 'ALL';
+
+      const filteredExams = state.exams.filter(ex => {
+        // 1. Filter berdasarkan Kelas / Tingkat
+        let matchClass = true;
+        if (clsFilter !== 'ALL') {
+          const tc = String(ex.target_class || 'Semua').trim();
+          if (clsFilter === 'LEVEL_VII') {
+            matchClass = tc === 'Semua' || tc === 'Semua VII' || tc.startsWith('VII.');
+          } else if (clsFilter === 'LEVEL_VIII') {
+            matchClass = tc === 'Semua' || tc === 'Semua VIII' || tc.startsWith('VIII.');
+          } else if (clsFilter === 'LEVEL_IX') {
+            matchClass = tc === 'Semua' || tc === 'Semua IX' || tc.startsWith('IX.');
+          } else {
+            const gradeLvl = clsFilter.split('.')[0];
+            matchClass = tc === clsFilter || tc === 'Semua' || tc === ('Semua ' + gradeLvl);
+          }
+        }
+
+        // 2. Filter berdasarkan Mata Pelajaran
+        let matchSubject = true;
+        if (subFilter !== 'ALL') {
+          matchSubject = normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subFilter);
+        }
+
+        return matchClass && matchSubject;
+      });
 
       container.innerHTML = `
         <div class="space-y-6">
@@ -2499,7 +2560,7 @@
             </div>
             <div class="flex flex-wrap gap-2">
               ${state.exams.length > 0 ? `
-                <button onclick="window.app.openAttendanceView('${state.exams[0].id}')" class="btn-3d px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">
+                <button onclick="window.app.openAttendanceView('${(filteredExams[0] || state.exams[0]).id}')" class="btn-3d px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md">
                   <i class="fa-solid fa-clipboard-user mr-1.5"></i>Daftar Hadir Peserta (A4 / PDF)
                 </button>
               ` : ''}
@@ -2509,17 +2570,40 @@
             </div>
           </div>
 
-          <!-- Filter Kelas pada Jadwal Ujian -->
-          <div class="glass-card p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3">
-            <div class="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <i class="fa-solid fa-filter text-blue-600"></i> Filter Kelas Peserta:
-              <select onchange="window.app.setScheduleClassFilter(this.value)" class="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold">
-                <option value="ALL">Semua Kelas</option>
-                ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${state.scheduleFilterClass === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
+          <!-- Filter Per Kelas & Per Mata Pelajaran pada Jadwal Ujian -->
+          <div class="glass-card p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+            <div class="lg:col-span-4">
+              <label class="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                <i class="fa-solid fa-chalkboard mr-1 text-blue-600"></i>Filter Kelas Peserta:
+              </label>
+              <select onchange="window.app.setScheduleClassFilter(this.value)" class="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800">
+                <option value="ALL" ${clsFilter === 'ALL' ? 'selected' : ''}>Semua Kelas</option>
+                <option value="LEVEL_VII" ${clsFilter === 'LEVEL_VII' ? 'selected' : ''}>Semua Tingkat VII</option>
+                <option value="LEVEL_VIII" ${clsFilter === 'LEVEL_VIII' ? 'selected' : ''}>Semua Tingkat VIII</option>
+                <option value="LEVEL_IX" ${clsFilter === 'LEVEL_IX' ? 'selected' : ''}>Semua Tingkat IX</option>
+                ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${clsFilter === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
               </select>
             </div>
-            <div class="text-xs text-slate-500">
-              Total Jadwal: <strong>${filteredExams.length}</strong> (${filteredExams.filter(e => e.is_active).length} Diaktifkan)
+
+            <div class="lg:col-span-5">
+              <label class="block text-[11px] font-extrabold uppercase text-slate-500 mb-1">
+                <i class="fa-solid fa-book-open mr-1 text-indigo-600"></i>Filter Mata Pelajaran:
+              </label>
+              <select onchange="window.app.setScheduleSubjectFilter(this.value)" class="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-800">
+                <option value="ALL" ${subFilter === 'ALL' ? 'selected' : ''}>Semua Mata Pelajaran (${allSubjectsList.length} Mapel)</option>
+                ${allSubjectsList.map(sub => `<option value="${escapeHtml(sub.name)}" ${normalizeSubjectKey(subFilter) === normalizeSubjectKey(sub.name) ? 'selected' : ''}>${escapeHtml(sub.name)} (${escapeHtml(sub.code)})</option>`).join('')}
+              </select>
+            </div>
+
+            <div class="lg:col-span-3 flex items-center justify-between gap-2 pt-1">
+              <div class="text-xs text-slate-600">
+                Jadwal Tampil: <strong>${filteredExams.length}</strong> <span class="text-[11px] text-emerald-600 font-bold">(${filteredExams.filter(e => e.is_active).length} Aktif)</span>
+              </div>
+              ${(clsFilter !== 'ALL' || subFilter !== 'ALL') ? `
+                <button type="button" onclick="window.app.resetScheduleFilters()" class="btn-3d px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold" title="Reset Filter Jadwal">
+                  <i class="fa-solid fa-filter-circle-xmark mr-1"></i>Reset
+                </button>
+              ` : ''}
             </div>
           </div>
 
@@ -2527,7 +2611,7 @@
           ${filteredExams.length === 0 ? `
             <div class="glass-card rounded-2xl p-10 text-center text-slate-400">
               <i class="fa-solid fa-calendar-xmark text-3xl mb-2 block"></i>
-              Belum ada jadwal ujian. Klik tombol <strong>Tambah Jadwal Ujian</strong> di kanan atas.
+              Tidak ada jadwal ujian yang sesuai dengan filter Kelas & Mata Pelajaran di atas.
             </div>
           ` : `
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2580,7 +2664,7 @@
 
                     <div class="flex flex-wrap items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-200/60">
                       <span class="text-xs font-semibold text-slate-600">
-                        <i class="fa-solid fa-list-ol mr-1 text-blue-600"></i><strong>${qCount}</strong> Soal &bull; Maks. ${ex.max_violations || 3}x Pelanggaran
+                        <i class="fa-solid fa-list-ol mr-1 text-blue-600"></i><strong>${qCount}</strong> Soal • Maks. ${ex.max_violations || 3}x Pelanggaran
                       </span>
                       <div class="flex flex-wrap gap-1.5">
                         <button onclick="window.app.openAttendanceView('${ex.id}')" class="btn-3d px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold" title="Cetak / Ekspor PDF Daftar Hadir A4">
@@ -4848,10 +4932,13 @@
         if (!file) return;
         const reader = new FileReader();
         reader.onload = async (evt) => {
-          const compressed = await compressImageDataUrl(evt.target.result, 240, 240);
+          // Gunakan resolusi lebih lebar (520x280) khusus untuk TTD & Cap agar tajam dan proporsional
+          const maxW = logoField === 'principal_signature' ? 520 : 240;
+          const maxH = logoField === 'principal_signature' ? 280 : 240;
+          const compressed = await compressImageDataUrl(evt.target.result, maxW, maxH);
           state.cardConfig[logoField] = compressed;
           try { localStorage.setItem('exambro_card_config_v1', JSON.stringify(state.cardConfig)); } catch (err) {}
-          showToast('Gambar kartu ujian berhasil dimuat & dioptimasi. Klik Simpan Desain Kartu untuk menyimpan ke server.', 'success');
+          showToast('Gambar berhasil dimuat & dioptimasi. Klik Simpan Desain Kartu untuk menyimpan ke server.', 'success');
           renderApp();
         };
         reader.readAsDataURL(file);
@@ -4956,150 +5043,25 @@
       },
 
       // ----------------- MANAJEMEN JADWAL UJIAN & PENGAWAS -----------------
+      setDashboardClassFilter(cls) {
+        state.dashboardFilterClass = cls;
+        renderApp();
+      },
+
       setScheduleClassFilter(cls) {
         state.scheduleFilterClass = cls;
         renderApp();
       },
 
-      openScheduleModal(id = null) {
-        document.getElementById('modal-schedule').classList.remove('hidden');
-        if (id) {
-          const ex = state.exams.find(x => x.id === id);
-          document.getElementById('modal-schedule-title').textContent = 'Edit Jadwal Ujian & Pengawas';
-          document.getElementById('form-schedule-id').value = ex.id;
-          document.getElementById('form-schedule-title').value = ex.title;
-          document.getElementById('form-schedule-subject').value = ex.subject;
-          document.getElementById('form-schedule-class').value = ex.target_class || 'Semua';
-          document.getElementById('form-schedule-date').value = ex.exam_date || new Date().toISOString().slice(0, 10);
-          document.getElementById('form-schedule-start').value = ex.start_time || '07:30';
-          document.getElementById('form-schedule-end').value = ex.end_time || '09:30';
-          document.getElementById('form-schedule-proctor').value = ex.proctor_name || '';
-          document.getElementById('form-schedule-room').value = ex.room_name || '';
-          document.getElementById('form-schedule-duration').value = ex.duration_minutes || 60;
-          document.getElementById('form-schedule-violations').value = ex.max_violations || 3;
-          document.getElementById('form-schedule-shuffle-q').checked = !!ex.shuffle_questions;
-          document.getElementById('form-schedule-shuffle-opt').checked = !!ex.shuffle_options;
-          document.getElementById('form-schedule-active').checked = !!ex.is_active;
-        } else {
-          document.getElementById('modal-schedule-title').textContent = 'Tambah Jadwal Ujian Baru';
-          document.getElementById('form-schedule-id').value = '';
-          document.getElementById('form-schedule-title').value = '';
-          document.getElementById('form-schedule-date').value = new Date().toISOString().slice(0, 10);
-          document.getElementById('form-schedule-proctor').value = '';
-          document.getElementById('form-schedule-room').value = 'Ruang 01 / Sesi 1';
-          document.getElementById('form-schedule-shuffle-q').checked = false;
-          document.getElementById('form-schedule-shuffle-opt').checked = false;
-          document.getElementById('form-schedule-active').checked = true;
-        }
-      },
-
-      async saveSchedule(e) {
-        e.preventDefault();
-        const id = document.getElementById('form-schedule-id').value;
-        const period = getActiveAcademicPeriod();
-        const selectedSubjectName = document.getElementById('form-schedule-subject').value;
-        const masterSub = state.subjects.find(s => normalizeSubjectKey(s.name) === normalizeSubjectKey(selectedSubjectName));
-
-        const payload = {
-          title: document.getElementById('form-schedule-title').value.trim(),
-          subject: selectedSubjectName,
-          subject_code: masterSub?.code || '',
-          target_class: document.getElementById('form-schedule-class').value,
-          exam_date: document.getElementById('form-schedule-date').value,
-          start_time: document.getElementById('form-schedule-start').value,
-          end_time: document.getElementById('form-schedule-end').value,
-          proctor_name: document.getElementById('form-schedule-proctor').value.trim(),
-          room_name: document.getElementById('form-schedule-room').value.trim(),
-          duration_minutes: parseInt(document.getElementById('form-schedule-duration').value, 10) || 60,
-          max_violations: parseInt(document.getElementById('form-schedule-violations').value, 10) || 3,
-          shuffle_questions: document.getElementById('form-schedule-shuffle-q').checked,
-          shuffle_options: document.getElementById('form-schedule-shuffle-opt').checked,
-          is_active: document.getElementById('form-schedule-active').checked,
-          academic_year: period.year_name,
-          semester: period.semester
-        };
-
-        if (IS_PREVIEW) {
-          if (id) {
-            const idx = state.exams.findIndex(x => x.id === id);
-            state.exams[idx] = { ...state.exams[idx], ...payload };
-          } else {
-            const newId = 'ex-' + Date.now();
-            state.exams.unshift({ id: newId, ...payload });
-            state.selectedExamId = newId;
-          }
-        } else {
-          if (id) {
-            const { error } = await supabase.from('exams').update(payload).eq('id', id);
-            if (error) return showToast(error.message, 'error');
-          } else {
-            const { data, error } = await supabase.from('exams').insert([payload]).select().single();
-            if (error) return showToast(error.message, 'error');
-            if (data) state.selectedExamId = data.id;
-          }
-          await loadAllAdminData();
-        }
-
-        document.getElementById('modal-schedule').classList.add('hidden');
-        showToast('Jadwal ujian & pengawas berhasil disimpan', 'success');
+      setScheduleSubjectFilter(sub) {
+        state.scheduleFilterSubject = sub;
         renderApp();
       },
 
-      async toggleExamStatus(id) {
-        const ex = state.exams.find(x => x.id === id);
-        if (!ex) return;
-        const nextStatus = !ex.is_active;
-        if (IS_PREVIEW) {
-          ex.is_active = nextStatus;
-        } else {
-          await supabase.from('exams').update({ is_active: nextStatus }).eq('id', id);
-          await loadAllAdminData();
-        }
-        showToast(`Jadwal "${ex.title}" ${nextStatus ? 'DIAKTIFKAN' : 'DINONAKTIFKAN'}`, nextStatus ? 'success' : 'warning');
+      resetScheduleFilters() {
+        state.scheduleFilterClass = 'ALL';
+        state.scheduleFilterSubject = 'ALL';
         renderApp();
-      },
-
-      async toggleExamShuffle(examId, field) {
-        const ex = state.exams.find(x => x.id === examId);
-        if (!ex) return;
-        const nextVal = !ex[field];
-        ex[field] = nextVal;
-        if (!IS_PREVIEW && supabase) {
-          const { error } = await supabase.from('exams').update({ [field]: nextVal }).eq('id', examId);
-          if (error) return showToast('Gagal menyimpan pengaturan acak: ' + error.message, 'error');
-          await loadAllAdminData();
-        }
-        const label = field === 'shuffle_questions' ? 'Acak Urutan Soal' : 'Acak Opsi/Kunci Jawaban';
-        showToast(`${label} ${nextVal ? 'DIAKTIFKAN' : 'DINONAKTIFKAN'}`, 'success');
-        renderApp();
-      },
-
-      async deleteSchedule(id) {
-        const ok = await customConfirm('Hapus jadwal ujian ini beserta soal di dalamnya?', 'Hapus Jadwal Ujian');
-        if (!ok) return;
-        if (IS_PREVIEW) {
-          state.exams = state.exams.filter(e => e.id !== id);
-          state.questions = state.questions.filter(q => q.exam_id !== id);
-        } else {
-          await supabase.from('exams').delete().eq('id', id);
-          await loadAllAdminData();
-        }
-        showSuccessLogoPopup();
-        showToast('Jadwal ujian dihapus', 'info');
-        renderApp();
-      },
-
-      manageExamQuestions(examId) {
-        const ex = state.exams.find(e => e.id === examId);
-        if (ex) {
-          const lvl = getExamGradeLevel(ex);
-          state.examBankLevelFilter = ['VII', 'VIII', 'IX'].includes(lvl) ? lvl : 'ALL';
-          state.examBankSubjectFilter = 'ALL';
-        }
-        state.selectedExamId = examId;
-        state.adminTab = 'exams';
-        renderApp();
-        triggerTransitionShadow();
       },
 
       // ----------------- DAFTAR HADIR PESERTA STANDAR A4 / PDF -----------------
