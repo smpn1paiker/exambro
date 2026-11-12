@@ -499,7 +499,7 @@
       }, 950);
     }
 
-    // Aksen Bayangan Halus Saat Berpindah Menu atau Halaman
+    // Aksen Bayangan Halus Saat Berpindah Menu atau Halaman (Otomatis dibersihkan agar modal fixed selalu di tengah layar)
     function triggerTransitionShadow() {
       const veil = document.getElementById('page-shadow-veil');
       if (veil) {
@@ -517,6 +517,9 @@
           target.classList.remove('transition-shadow-accent');
           void target.offsetWidth;
           target.classList.add('transition-shadow-accent');
+          setTimeout(() => {
+            target.classList.remove('transition-shadow-accent');
+          }, 380);
         }
       });
     }
@@ -947,11 +950,10 @@
       return String(name || '').trim().toLowerCase().replace(/\s+/g, ' ');
     }
 
-    // Mengambil seluruh daftar Mata Pelajaran gabungan dari Data Master (state.subjects) dan Jadwal Ujian (state.exams)
+    // Mengambil daftar Mata Pelajaran MURNI dari Data Master (state.subjects) sebagai acuan tunggal
     function getAllMasterAndExamSubjects() {
       const map = new Map();
 
-      // 1. Masukkan semua mata pelajaran dari Data Master terlebih dahulu
       state.subjects.forEach(s => {
         if (!s || s.is_archived) return;
         const cleanName = String(s.name || '').trim();
@@ -967,6 +969,9 @@
           });
         }
       });
+
+      return Array.from(map.values());
+    }
 
       // 2. Tambahkan mata pelajaran dari state.exams jika ada yang belum terdaftar di Data Master
       state.exams.forEach(ex => {
@@ -3137,13 +3142,25 @@
     // ============================================================================
     // MENU BANK SOAL & IMPOR (TERINTEGRASI PENUH DENGAN DATA MASTER MATA PELAJARAN)
     // ============================================================================
+    // ============================================================================
+    // MENU BANK SOAL & IMPOR (100% SINKRON DENGAN DATA MASTER MATA PELAJARAN)
+    // ============================================================================
     function renderAdminExamsTab(container) {
-      // Ambil seluruh daftar Mata Pelajaran dari Data Master (selalu tampil di semua tab kelas VII, VIII, IX)
+      // Ambil seluruh daftar Mata Pelajaran murni dari Data Master
       const allMasterSubjects = getAllMasterAndExamSubjects();
+      const masterKeysSet = new Set(allMasterSubjects.map(s => normalizeSubjectKey(s.name)));
       const subjectsForCurrentLevel = allMasterSubjects;
 
+      // Jika filter mapel yang sedang dipilih sudah dihapus dari Data Master, reset ke 'ALL'
+      if (state.examBankSubjectFilter !== 'ALL' && !masterKeysSet.has(normalizeSubjectKey(state.examBankSubjectFilter))) {
+        state.examBankSubjectFilter = 'ALL';
+      }
+
+      // Hanya tampilkan paket ujian yang mata pelajarannya terdaftar aktif di Data Master
+      const validMasterExams = state.exams.filter(ex => masterKeysSet.has(normalizeSubjectKey(ex.subject)));
+
       // Filter paket ujian berdasarkan tingkat kelas DAN mata pelajaran yang dipilih
-      const filteredExamsByLevel = state.exams.filter(ex => {
+      const filteredExamsByLevel = validMasterExams.filter(ex => {
         const matchLevel = doesExamMatchLevelFilter(ex, state.examBankLevelFilter);
         const matchSubject = state.examBankSubjectFilter === 'ALL'
           || normalizeSubjectKey(ex.subject) === normalizeSubjectKey(state.examBankSubjectFilter);
@@ -3167,18 +3184,18 @@
             .sort((a, b) => (a.order_number || 0) - (b.order_number || 0))
         : [];
 
-      const countLevel = (lvl) => state.exams.filter(e => {
+      const countLevel = (lvl) => validMasterExams.filter(e => {
         const matchLvl = getExamGradeLevel(e) === lvl;
         const matchSub = state.examBankSubjectFilter === 'ALL'
           || normalizeSubjectKey(e.subject) === normalizeSubjectKey(state.examBankSubjectFilter);
         return matchLvl && matchSub;
       }).length;
 
-      // Cek mata pelajaran yang belum memiliki paket soal untuk tingkat yang sedang dipilih (VII / VIII / IX)
+      // Cek mata pelajaran Data Master yang belum memiliki paket soal untuk tingkat yang sedang dipilih
       const targetCheckLevels = state.examBankLevelFilter === 'ALL' ? ['VII', 'VIII', 'IX'] : [state.examBankLevelFilter];
       const unlinkedMasterSubjects = subjectsForCurrentLevel.filter(sub => {
         return targetCheckLevels.some(lvl =>
-          !state.exams.some(ex =>
+          !validMasterExams.some(ex =>
             normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name) &&
             getExamGradeLevel(ex) === lvl
           )
@@ -3191,7 +3208,7 @@
             <div>
               <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Bank Soal Terintegrasi Data Master & Jenjang Kelas</span>
               <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Bank Soal & Impor Soal (Kelas VII, VIII, IX)</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Pilih <strong>Mata Pelajaran</strong> (termasuk PKN, MULOK, atau mapel baru) lalu pilih jenjang <strong>Kelas VII, VIII, atau IX</strong> untuk menginput soal secara terpisah.</p>
+              <p class="text-xs sm:text-sm text-slate-500">Daftar mata pelajaran di bawah terhubung langsung secara otomatis dengan menu <strong>Data Master → Mata Pelajaran</strong>.</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button onclick="window.app.downloadQuestionWordTemplate()" class="btn-3d px-3.5 py-2 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-bold">
@@ -3209,7 +3226,7 @@
           <!-- TAB PEMISAH SOAL ANTARA KELAS VII, VIII, DAN IX -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             ${[
-              { id: 'ALL', label: 'Semua Tingkat', count: state.exams.length, icon: 'fa-layer-group' },
+              { id: 'ALL', label: 'Semua Tingkat', count: validMasterExams.length, icon: 'fa-layer-group' },
               { id: 'VII', label: 'Soal Kelas VII', count: countLevel('VII'), icon: 'fa-7' },
               { id: 'VIII', label: 'Soal Kelas VIII', count: countLevel('VIII'), icon: 'fa-8' },
               { id: 'IX', label: 'Soal Kelas IX', count: countLevel('IX'), icon: 'fa-9' }
@@ -3238,10 +3255,10 @@
                 </div>
                 <div>
                   <div class="text-xs sm:text-sm font-extrabold text-slate-900">
-                    Terdapat ${unlinkedMasterSubjects.length} Mata Pelajaran yang belum memiliki paket lengkap per jenjang ${state.examBankLevelFilter === 'ALL' ? '(Kelas VII, VIII, IX)' : '(Kelas ' + state.examBankLevelFilter + ')'}
+                    Terdapat ${unlinkedMasterSubjects.length} Mata Pelajaran Data Master yang belum memiliki paket lengkap ${state.examBankLevelFilter === 'ALL' ? '(Kelas VII, VIII, IX)' : '(Kelas ' + state.examBankLevelFilter + ')'}
                   </div>
                   <p class="text-[11px] text-slate-600 mt-0.5">
-                    Mata Pelajaran: <strong>${unlinkedMasterSubjects.map(u => escapeHtml(u.name)).join(', ')}</strong>. Klik tombol di samping untuk membuat paket Bank Soal per jenjang kelas secara otomatis.
+                    Mata Pelajaran: <strong>${unlinkedMasterSubjects.map(u => escapeHtml(u.name)).join(', ')}</strong>.
                   </p>
                 </div>
               </div>
@@ -3260,7 +3277,7 @@
                   1. Pilih Mata Pelajaran (Data Master):
                 </label>
                 <select onchange="window.app.setExamBankSubjectFilter(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
-                  <option value="ALL">-- Semua Mata Pelajaran (${subjectsForCurrentLevel.length} Mapel) --</option>
+                  <option value="ALL">-- Semua Mata Pelajaran Data Master (${subjectsForCurrentLevel.length} Mapel) --</option>
                   ${subjectsForCurrentLevel.map(s => {
                     return `<option value="${escapeHtml(s.name)}" ${normalizeSubjectKey(state.examBankSubjectFilter) === normalizeSubjectKey(s.name) ? 'selected' : ''}>${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
                   }).join('')}
@@ -3274,15 +3291,22 @@
                 </label>
                 ${filteredExamsByLevel.length === 0 ? `
                   <div class="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
-                    <span>Pilih jenjang kelas di bawah untuk membuka/membuat paket soal.</span>
+                    <span>Pilih Mata Pelajaran lalu klik tombol jenjang kelas di bawah untuk membuat paket soal.</span>
                   </div>
                 ` : `
-                  <select onchange="window.app.selectExamForQuestions(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
-                    ${filteredExamsByLevel.map(e => {
-                      const qLen = state.questions.filter(q => q.exam_id === e.id).length;
-                      return `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[Kelas ${escapeHtml(e.target_class || getExamGradeLevel(e))} • ${escapeHtml(e.subject)}] ${escapeHtml(e.title)} (${qLen} Soal)</option>`;
-                    }).join('')}
-                  </select>
+                  <div class="flex gap-2">
+                    <select onchange="window.app.selectExamForQuestions(this.value)" class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
+                      ${filteredExamsByLevel.map(e => {
+                        const qLen = state.questions.filter(q => q.exam_id === e.id).length;
+                        return `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[Kelas ${escapeHtml(e.target_class || getExamGradeLevel(e))} • ${escapeHtml(e.subject)}] ${escapeHtml(e.title)} (${qLen} Soal)</option>`;
+                      }).join('')}
+                    </select>
+                    ${currentExam ? `
+                      <button type="button" onclick="window.app.deleteSchedule('${currentExam.id}')" class="btn-3d px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-extrabold whitespace-nowrap" title="Hapus Paket Bank Soal Ini">
+                        <i class="fa-solid fa-trash-can mr-1"></i>Hapus Paket
+                      </button>
+                    ` : ''}
+                  </div>
                 `}
               </div>
             </div>
@@ -3298,7 +3322,7 @@
                 </div>
                 <div class="flex flex-wrap gap-2">
                   ${['VII', 'VIII', 'IX'].map(lvl => {
-                    const pkg = state.exams.find(ex =>
+                    const pkg = validMasterExams.find(ex =>
                       normalizeSubjectKey(ex.subject) === normalizeSubjectKey(activeSubjectName) &&
                       getExamGradeLevel(ex) === lvl
                     );
@@ -3422,7 +3446,7 @@
         </div>
 
         <!-- Modal Tambah/Edit Soal & Upload Gambar -->
-        <div id="modal-question" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div id="modal-question" class="hidden fixed inset-0 z-[9999996] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div class="glass-card bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl my-8">
             <h3 class="text-lg font-extrabold text-slate-900 mb-4">Tambah / Edit Soal Pilihan Ganda</h3>
             <form onsubmit="window.app.saveQuestion(event)" class="space-y-3">
@@ -3479,7 +3503,7 @@
         </div>
 
         <!-- Modal Impor Google Form / Teks Terstruktur -->
-        <div id="modal-import-gform" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+        <div id="modal-import-gform" class="hidden fixed inset-0 z-[9999996] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div class="glass-card bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl">
             <h3 class="text-lg font-extrabold text-slate-900 mb-2">Impor Soal dari Google Form / Word Teks</h3>
             <p class="text-xs text-slate-500 mb-3">Gunakan format: Baris soal, diikuti opsi <code>A. ...</code>, <code>B. ...</code>, <code>C. ...</code>, <code>D. ...</code> dan baris <code>KUNCI: A</code>. Pisahkan antar soal dengan baris kosong.</p>
@@ -4594,7 +4618,7 @@
         reader.readAsArrayBuffer(file);
       },
 
-      // ----------------- MANAJEMEN DATA KELAS -----------------
+      // ----------------- MANAJEMEN DATA KELAS (TERINTEGRASI OTOMATIS KE SISWA & JADWAL) -----------------
       setClassLevelFilter(lvl) {
         state.classFilterLevel = lvl;
         renderApp();
@@ -4602,6 +4626,8 @@
       },
 
       openClassModal(id = null) {
+        const tabContainer = document.getElementById('admin-tab-container');
+        if (tabContainer) tabContainer.classList.remove('transition-shadow-accent');
         document.getElementById('modal-class').classList.remove('hidden');
         if (id) {
           const c = state.classes.find(x => x.id === id);
@@ -4622,46 +4648,83 @@
         const class_name = document.getElementById('form-class-name').value.trim();
         const academic_year = document.getElementById('form-class-year').value.trim();
 
-        if (IS_PREVIEW) {
-          if (id) {
-            const idx = state.classes.findIndex(c => c.id === id);
-            state.classes[idx] = { ...state.classes[idx], level, class_name, academic_year };
+        const oldClass = id ? state.classes.find(c => c.id === id) : null;
+        const oldClassName = oldClass ? oldClass.class_name : null;
+
+        showLoadingPopup('Menyimpan & Menyinkronkan Data Kelas...');
+        try {
+          if (IS_PREVIEW) {
+            if (id) {
+              const idx = state.classes.findIndex(c => c.id === id);
+              state.classes[idx] = { ...state.classes[idx], level, class_name, academic_year };
+              if (oldClassName && oldClassName !== class_name) {
+                state.students.forEach(s => { if (s.class_name === oldClassName) s.class_name = class_name; });
+                state.exams.forEach(ex => { if (ex.target_class === oldClassName) ex.target_class = class_name; });
+              }
+            } else {
+              state.classes.push({ id: 'cls-' + Date.now(), level, class_name, academic_year });
+            }
           } else {
-            state.classes.push({ id: 'cls-' + Date.now(), level, class_name, academic_year });
+            if (id) {
+              const { error } = await supabase.from('classes').update({ level, class_name, academic_year }).eq('id', id);
+              if (error) throw error;
+              // Sinkronkan otomatis perubahan nama kelas ke tabel Siswa dan Jadwal Ujian
+              if (oldClassName && oldClassName !== class_name) {
+                await Promise.all([
+                  supabase.from('students').update({ class_name }).eq('class_name', oldClassName),
+                  supabase.from('exams').update({ target_class: class_name }).eq('target_class', oldClassName)
+                ]);
+              }
+            } else {
+              const { error } = await supabase.from('classes').insert([{ level, class_name, academic_year }]);
+              if (error) throw error;
+            }
+            await loadAllAdminData();
           }
-        } else {
-          if (id) {
-            await supabase.from('classes').update({ level, class_name, academic_year }).eq('id', id);
-          } else {
-            await supabase.from('classes').insert([{ level, class_name, academic_year }]);
-          }
-          await loadAllAdminData();
+          document.getElementById('modal-class').classList.add('hidden');
+          showToast('Data kelas berhasil disimpan & disinkronkan', 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menyimpan kelas: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
-        document.getElementById('modal-class').classList.add('hidden');
-        showToast('Data kelas berhasil disimpan', 'success');
-        renderApp();
       },
 
       async deleteClass(id) {
-        const ok = await customConfirm('Hapus kelas ini dari daftar?', 'Hapus Data Kelas');
+        const cls = state.classes.find(c => c.id === id);
+        if (!cls) return;
+        const ok = await customConfirm(`Hapus Kelas "${cls.class_name}" dari Data Master?`, 'Hapus Data Kelas');
         if (!ok) return;
-        if (IS_PREVIEW) {
-          state.classes = state.classes.filter(c => c.id !== id);
-        } else {
-          await supabase.from('classes').delete().eq('id', id);
-          await loadAllAdminData();
+
+        showLoadingPopup('Menghapus Kelas...');
+        try {
+          if (IS_PREVIEW) {
+            state.classes = state.classes.filter(c => c.id !== id);
+          } else {
+            const { error } = await supabase.from('classes').delete().eq('id', id);
+            if (error) throw error;
+            await loadAllAdminData();
+          }
+          showSuccessLogoPopup();
+          showToast(`Kelas ${cls.class_name} dihapus`, 'info');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus kelas: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
-        showSuccessLogoPopup();
-        renderApp();
       },
 
-      // ----------------- MANAJEMEN MATA PELAJARAN -----------------
+      // ----------------- MANAJEMEN MATA PELAJARAN (TERINTEGRASI PENUH KE BANK SOAL, JADWAL & GURU) -----------------
       setSubjectSearch(val) {
         state.subjectSearch = val;
         renderApp();
       },
 
       openSubjectModal(id = null) {
+        const tabContainer = document.getElementById('admin-tab-container');
+        if (tabContainer) tabContainer.classList.remove('transition-shadow-accent');
         document.getElementById('modal-subject').classList.remove('hidden');
         if (id) {
           const s = state.subjects.find(x => x.id === id);
@@ -4683,33 +4746,146 @@
         const name = document.getElementById('form-subject-name').value.trim();
         const level = document.getElementById('form-subject-level').value;
 
-        if (IS_PREVIEW) {
-          if (id) {
-            const idx = state.subjects.findIndex(x => x.id === id);
-            state.subjects[idx] = { ...state.subjects[idx], code, name, level };
+        const oldSub = id ? state.subjects.find(x => x.id === id) : null;
+        const oldName = oldSub ? oldSub.name : null;
+
+        showLoadingPopup('Menyimpan & Menyinkronkan Mata Pelajaran...');
+        try {
+          if (IS_PREVIEW) {
+            if (id) {
+              const idx = state.subjects.findIndex(x => x.id === id);
+              state.subjects[idx] = { ...state.subjects[idx], code, name, level };
+              if (oldName) {
+                state.exams.forEach(ex => {
+                  if (normalizeSubjectKey(ex.subject) === normalizeSubjectKey(oldName)) {
+                    ex.subject = name;
+                    ex.subject_code = code;
+                    if (ex.title && ex.title.includes(oldName)) {
+                      ex.title = ex.title.replace(oldName, name);
+                    }
+                  }
+                });
+                state.teachers.forEach(t => {
+                  if (normalizeSubjectKey(t.subject_name) === normalizeSubjectKey(oldName)) {
+                    t.subject_name = name;
+                    t.subject_code = code;
+                  }
+                });
+              }
+            } else {
+              state.subjects.push({ id: 'sub-' + Date.now(), code, name, level });
+            }
           } else {
-            state.subjects.push({ id: 'sub-' + Date.now(), code, name, level });
+            if (id) {
+              const { error } = await supabase.from('subjects').update({ code, name, level }).eq('id', id);
+              if (error) throw error;
+
+              // Sinkronkan otomatis perubahan nama/kode Mata Pelajaran ke Bank Soal (exams) dan Guru (teachers)
+              if (oldName) {
+                const matchingExams = state.exams.filter(ex => normalizeSubjectKey(ex.subject) === normalizeSubjectKey(oldName));
+                for (const ex of matchingExams) {
+                  const updatedTitle = (ex.title && ex.title.includes(oldName))
+                    ? ex.title.replace(oldName, name)
+                    : ex.title;
+                  await supabase.from('exams').update({
+                    subject: name,
+                    subject_code: code,
+                    title: updatedTitle
+                  }).eq('id', ex.id);
+                }
+
+                const matchingTeachers = state.teachers.filter(t => normalizeSubjectKey(t.subject_name) === normalizeSubjectKey(oldName));
+                if (matchingTeachers.length > 0) {
+                  await supabase.from('teachers').update({
+                    subject_name: name,
+                    subject_code: code
+                  }).in('id', matchingTeachers.map(t => t.id));
+                }
+              }
+            } else {
+              const { error } = await supabase.from('subjects').insert([{ code, name, level }]);
+              if (error) throw error;
+            }
+            await loadAllAdminData();
           }
-        } else {
-          if (id) await supabase.from('subjects').update({ code, name, level }).eq('id', id);
-          else await supabase.from('subjects').insert([{ code, name, level }]);
-          await loadAllAdminData();
+
+          if (oldName && normalizeSubjectKey(state.examBankSubjectFilter) === normalizeSubjectKey(oldName)) {
+            state.examBankSubjectFilter = name;
+          }
+          if (oldName && normalizeSubjectKey(state.scheduleFilterSubject) === normalizeSubjectKey(oldName)) {
+            state.scheduleFilterSubject = name;
+          }
+          if (oldName && normalizeSubjectKey(state.resultFilters.subject) === normalizeSubjectKey(oldName)) {
+            state.resultFilters.subject = name;
+          }
+
+          document.getElementById('modal-subject').classList.add('hidden');
+          showToast('Mata pelajaran berhasil disimpan & disinkronkan ke Bank Soal/Jadwal', 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menyimpan mata pelajaran: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
-        document.getElementById('modal-subject').classList.add('hidden');
-        showToast('Mata pelajaran disimpan', 'success');
-        renderApp();
       },
 
       async deleteSubject(id) {
-        const ok = await customConfirm('Hapus mata pelajaran ini?', 'Hapus Mata Pelajaran');
+        const sub = state.subjects.find(s => s.id === id);
+        if (!sub) return;
+        const relatedExams = state.exams.filter(ex => normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name));
+
+        const ok = await customConfirm(
+          `Hapus mata pelajaran "${sub.name}" (${sub.code}) dari Data Master?\n\n` +
+          (relatedExams.length > 0
+            ? `Terdapat ${relatedExams.length} paket di Bank Soal / Jadwal Ujian pada mata pelajaran ini yang juga akan ikut dihapus secara otomatis agar tidak tertinggal di Bank Soal.`
+            : `Mata pelajaran ini akan dihapus secara permanen.`),
+          'Hapus Mata Pelajaran & Sinkronkan Bank Soal'
+        );
         if (!ok) return;
-        if (IS_PREVIEW) state.subjects = state.subjects.filter(s => s.id !== id);
-        else {
-          await supabase.from('subjects').delete().eq('id', id);
-          await loadAllAdminData();
+
+        showLoadingPopup('Menghapus Mata Pelajaran & Paket Terkait...');
+        try {
+          if (IS_PREVIEW) {
+            state.subjects = state.subjects.filter(s => s.id !== id);
+            const relIds = relatedExams.map(e => e.id);
+            state.exams = state.exams.filter(e => !relIds.includes(e.id));
+            state.questions = state.questions.filter(q => !relIds.includes(q.exam_id));
+            state.teachers.forEach(t => {
+              if (normalizeSubjectKey(t.subject_name) === normalizeSubjectKey(sub.name)) t.subject_name = 'Umum';
+            });
+          } else {
+            if (relatedExams.length > 0) {
+              const relIds = relatedExams.map(e => e.id);
+              await supabase.from('exams').delete().in('id', relIds);
+            }
+            const matchingTeachers = state.teachers.filter(t => normalizeSubjectKey(t.subject_name) === normalizeSubjectKey(sub.name));
+            if (matchingTeachers.length > 0) {
+              await supabase.from('teachers').update({ subject_name: 'Umum' }).in('id', matchingTeachers.map(t => t.id));
+            }
+            const { error } = await supabase.from('subjects').delete().eq('id', id);
+            if (error) throw error;
+            await loadAllAdminData();
+          }
+
+          if (normalizeSubjectKey(state.examBankSubjectFilter) === normalizeSubjectKey(sub.name)) {
+            state.examBankSubjectFilter = 'ALL';
+          }
+          if (normalizeSubjectKey(state.scheduleFilterSubject) === normalizeSubjectKey(sub.name)) {
+            state.scheduleFilterSubject = 'ALL';
+          }
+          if (normalizeSubjectKey(state.resultFilters.subject) === normalizeSubjectKey(sub.name)) {
+            state.resultFilters.subject = 'ALL';
+          }
+          state.selectedExamId = state.exams[0]?.id || null;
+
+          showSuccessLogoPopup();
+          showToast(`Mata pelajaran "${sub.name}" beserta paket Bank Soalnya berhasil dihapus`, 'info');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus mata pelajaran: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
-        showSuccessLogoPopup();
-        renderApp();
       },
 
       // Buka atau Buat Otomatis Paket Bank Soal Spesifik Jenjang (VII / VIII / IX)
@@ -4721,13 +4897,11 @@
         state.examBankLevelFilter = cleanLevel;
         state.examBankSubjectFilter = subjectName;
 
-        // 1. Cek apakah sudah ada paket ujian untuk mapel ini pada jenjang cleanLevel (VII / VIII / IX)
         let existingExam = state.exams.find(ex =>
           normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
           getExamGradeLevel(ex) === cleanLevel
         );
 
-        // 2. Jika belum ada untuk jenjang ini, cek apakah ada paket umum ('Semua') yang masih kosong (0 soal) seperti PKN / MULOK
         if (!existingExam) {
           const emptyGeneralExam = state.exams.find(ex =>
             normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
@@ -4753,7 +4927,6 @@
           }
         }
 
-        // 3. Jika tetap belum ada, otomatis buatkan paket baru khusus untuk jenjang kelas tersebut
         if (!existingExam) {
           existingExam = await window.app.createQuickExamPackageForSubject(subjectName, true, cleanLevel);
         }
@@ -4766,13 +4939,15 @@
         triggerTransitionShadow();
       },
 
-      // ----------------- MANAJEMEN GURU PENGAMPU (+ IMPOR EXCEL) -----------------
+      // ----------------- MANAJEMEN GURU PENGAMPU (TERINTEGRASI OTOMATIS KE JADWAL UJIAN) -----------------
       setTeacherSearch(val) {
         state.teacherSearch = val;
         renderApp();
       },
 
       openTeacherModal(id = null) {
+        const tabContainer = document.getElementById('admin-tab-container');
+        if (tabContainer) tabContainer.classList.remove('transition-shadow-accent');
         document.getElementById('modal-teacher').classList.remove('hidden');
         if (id) {
           const t = state.teachers.find(x => x.id === id);
@@ -4794,33 +4969,70 @@
         const name = document.getElementById('form-teacher-name').value.trim();
         const subject_name = document.getElementById('form-teacher-subject').value;
 
-        if (IS_PREVIEW) {
-          if (id) {
-            const idx = state.teachers.findIndex(x => x.id === id);
-            state.teachers[idx] = { ...state.teachers[idx], nip, name, subject_name };
+        const oldTeacher = id ? state.teachers.find(x => x.id === id) : null;
+        const oldTeacherName = oldTeacher ? oldTeacher.name : null;
+
+        showLoadingPopup('Menyimpan & Menyinkronkan Data Guru...');
+        try {
+          if (IS_PREVIEW) {
+            if (id) {
+              const idx = state.teachers.findIndex(x => x.id === id);
+              state.teachers[idx] = { ...state.teachers[idx], nip, name, subject_name };
+              if (oldTeacherName && oldTeacherName !== name) {
+                state.exams.forEach(ex => { if (ex.proctor_name === oldTeacherName) ex.proctor_name = name; });
+              }
+            } else {
+              state.teachers.push({ id: 'tch-' + Date.now(), nip, name, subject_name });
+            }
           } else {
-            state.teachers.push({ id: 'tch-' + Date.now(), nip, name, subject_name });
+            if (id) {
+              const { error } = await supabase.from('teachers').update({ nip, name, subject_name }).eq('id', id);
+              if (error) throw error;
+              // Sinkronkan perubahan nama guru ke kolom Pengawas di Jadwal Ujian
+              if (oldTeacherName && oldTeacherName !== name) {
+                await supabase.from('exams').update({ proctor_name: name }).eq('proctor_name', oldTeacherName);
+              }
+            } else {
+              const { error } = await supabase.from('teachers').insert([{ nip, name, subject_name }]);
+              if (error) throw error;
+            }
+            await loadAllAdminData();
           }
-        } else {
-          if (id) await supabase.from('teachers').update({ nip, name, subject_name }).eq('id', id);
-          else await supabase.from('teachers').insert([{ nip, name, subject_name }]);
-          await loadAllAdminData();
+          document.getElementById('modal-teacher').classList.add('hidden');
+          showToast('Data guru berhasil disimpan & disinkronkan', 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menyimpan guru: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
-        document.getElementById('modal-teacher').classList.add('hidden');
-        showToast('Data guru berhasil disimpan', 'success');
-        renderApp();
       },
 
       async deleteTeacher(id) {
-        const ok = await customConfirm('Hapus data guru ini?', 'Hapus Data Guru');
+        const tch = state.teachers.find(t => t.id === id);
+        if (!tch) return;
+        const ok = await customConfirm(`Hapus data guru "${tch.name}" dari Data Master?`, 'Hapus Data Guru');
         if (!ok) return;
-        if (IS_PREVIEW) state.teachers = state.teachers.filter(t => t.id !== id);
-        else {
-          await supabase.from('teachers').delete().eq('id', id);
-          await loadAllAdminData();
+
+        showLoadingPopup('Menghapus Guru...');
+        try {
+          if (IS_PREVIEW) {
+            state.teachers = state.teachers.filter(t => t.id !== id);
+            state.exams.forEach(ex => { if (ex.proctor_name === tch.name) ex.proctor_name = '-'; });
+          } else {
+            await supabase.from('exams').update({ proctor_name: '-' }).eq('proctor_name', tch.name);
+            const { error } = await supabase.from('teachers').delete().eq('id', id);
+            if (error) throw error;
+            await loadAllAdminData();
+          }
+          showSuccessLogoPopup();
+          showToast(`Data guru ${tch.name} dihapus`, 'info');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus guru: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
         }
-        showSuccessLogoPopup();
-        renderApp();
       },
 
       downloadTeacherTemplate() {
@@ -5172,6 +5384,10 @@
       },
 
       openScheduleModal(id = null) {
+        // Pastikan container tidak menahan posisi fixed agar modal selalu muncul tepat di tengah layar
+        const tabContainer = document.getElementById('admin-tab-container');
+        if (tabContainer) tabContainer.classList.remove('transition-shadow-accent');
+
         const modal = document.getElementById('modal-schedule');
         if (!modal) return;
         modal.classList.remove('hidden');
