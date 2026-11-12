@@ -973,26 +973,6 @@
       return Array.from(map.values());
     }
 
-      // 2. Tambahkan mata pelajaran dari state.exams jika ada yang belum terdaftar di Data Master
-      state.exams.forEach(ex => {
-        if (!ex || !ex.subject) return;
-        const cleanName = String(ex.subject).trim();
-        if (!cleanName) return;
-        const key = normalizeSubjectKey(cleanName);
-        if (!map.has(key)) {
-          map.set(key, {
-            id: 'ext-' + key,
-            code: String(ex.subject_code || 'UJIAN').trim(),
-            name: cleanName,
-            level: getExamGradeLevel(ex),
-            fromMaster: false
-          });
-        }
-      });
-
-      return Array.from(map.values());
-    }
-
     // Menentukan tingkat kelas ('VII' | 'VIII' | 'IX' | 'Semua') murni dari paket ujian (tanpa dikunci oleh Data Master)
     function getExamGradeLevel(exam) {
       if (!exam) return 'Semua';
