@@ -964,15 +964,6 @@
       return exLevel === levelFilter;
     }
 
-    // Mengecek apakah sebuah paket ujian cocok dengan filter tab tingkat kelas ('ALL' | 'VII' | 'VIII' | 'IX')
-    function doesExamMatchLevelFilter(exam, levelFilter) {
-      if (!exam) return false;
-      if (!levelFilter || levelFilter === 'ALL') return true;
-      const exLevel = getExamGradeLevel(exam);
-      // Paket ujian dengan tingkat 'Semua' tetap ditampilkan di tab VII, VIII, dan IX agar tidak ada mapel yang hilang
-      return exLevel === levelFilter || exLevel === 'Semua';
-    }
-
     // Fungsi Pengacak Array Deterministik (Berbasis Seed Siswa + Ujian agar konsisten jika halaman di-refresh saat ujian)
     function seededShuffle(array, seedStr) {
       const arr = [...array];
