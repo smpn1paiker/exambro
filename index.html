@@ -3126,20 +3126,18 @@
     // MENU BANK SOAL & IMPOR (100% SINKRON DENGAN DATA MASTER MATA PELAJARAN)
     // ============================================================================
     function renderAdminExamsTab(container) {
-      // Ambil seluruh daftar Mata Pelajaran murni dari Data Master
       const allMasterSubjects = getAllMasterAndExamSubjects();
       const masterKeysSet = new Set(allMasterSubjects.map(s => normalizeSubjectKey(s.name)));
       const subjectsForCurrentLevel = allMasterSubjects;
 
-      // Jika filter mapel yang sedang dipilih sudah dihapus dari Data Master, reset ke 'ALL'
       if (state.examBankSubjectFilter !== 'ALL' && !masterKeysSet.has(normalizeSubjectKey(state.examBankSubjectFilter))) {
         state.examBankSubjectFilter = 'ALL';
       }
 
-      // Hanya tampilkan paket ujian yang mata pelajarannya terdaftar aktif di Data Master
+      // Ambil semua paket yang mata pelajarannya ada di Data Master
       const validMasterExams = state.exams.filter(ex => masterKeysSet.has(normalizeSubjectKey(ex.subject)));
 
-      // Filter paket ujian berdasarkan tingkat kelas DAN mata pelajaran yang dipilih
+      // Filter paket berdasarkan tab tingkat kelas DAN mata pelajaran
       const filteredExamsByLevel = validMasterExams.filter(ex => {
         const matchLevel = doesExamMatchLevelFilter(ex, state.examBankLevelFilter);
         const matchSubject = state.examBankSubjectFilter === 'ALL'
@@ -3154,9 +3152,13 @@
       }
 
       const currentExam = filteredExamsByLevel.find(e => e.id === state.selectedExamId) || null;
+
+      // Pastikan nama mata pelajaran aktif selalu terdeteksi meskipun belum ada paket soal di tab ini
       const activeSubjectName = state.examBankSubjectFilter !== 'ALL'
         ? state.examBankSubjectFilter
-        : (currentExam ? currentExam.subject : '');
+        : (currentExam ? currentExam.subject : (subjectsForCurrentLevel[0]?.name || ''));
+
+      const encodedActiveSubject = encodeURIComponent(activeSubjectName);
 
       const examQuestions = currentExam
         ? state.questions
@@ -3171,24 +3173,28 @@
         return matchLvl && matchSub;
       }).length;
 
-      // Cek mata pelajaran Data Master yang belum memiliki paket soal untuk tingkat yang sedang dipilih
-      const targetCheckLevels = state.examBankLevelFilter === 'ALL' ? ['VII', 'VIII', 'IX'] : [state.examBankLevelFilter];
-      const unlinkedMasterSubjects = subjectsForCurrentLevel.filter(sub => {
-        return targetCheckLevels.some(lvl =>
-          !validMasterExams.some(ex =>
-            normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name) &&
-            getExamGradeLevel(ex) === lvl
-          )
+      // Helper mencari paket spesifik berdasarkan Mata Pelajaran + Target Kelas Exact (misal 'Semua IX' vs 'IX.4' vs 'IX.5')
+      const findExactPackage = (subName, targetCls) => {
+        return validMasterExams.find(ex =>
+          normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subName) &&
+          String(ex.target_class || '').trim().toUpperCase() === String(targetCls).trim().toUpperCase()
         );
-      });
+      };
+
+      // Kelompokkan daftar kelas dari Data Master per tingkat VII, VIII, IX
+      const classesByLevel = {
+        VII: state.classes.filter(c => c.level === 'VII' || String(c.class_name).startsWith('VII.')),
+        VIII: state.classes.filter(c => c.level === 'VIII' || String(c.class_name).startsWith('VIII.')),
+        IX: state.classes.filter(c => c.level === 'IX' || String(c.class_name).startsWith('IX.'))
+      };
 
       container.innerHTML = `
         <div class="space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Bank Soal Terintegrasi Data Master & Jenjang Kelas</span>
-              <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Bank Soal & Impor Soal (Kelas VII, VIII, IX)</h1>
-              <p class="text-xs sm:text-sm text-slate-500">Daftar mata pelajaran di bawah terhubung langsung secara otomatis dengan menu <strong>Data Master → Mata Pelajaran</strong>.</p>
+              <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full">Bank Soal Per Jenjang & Per Rombel Kelas</span>
+              <h1 class="text-2xl font-extrabold text-slate-900 mt-1">Bank Soal & Impor Soal (VII, VIII, IX & Per Rombel)</h1>
+              <p class="text-xs sm:text-sm text-slate-500">Setiap pilihan jenjang (<strong>Semua VII, VIII, IX</strong>) maupun kelas spesifik (misal <strong>IX.4</strong> atau <strong>IX.5</strong> saja) memiliki <strong>Bank Soal sendiri</strong> tanpa merubah kelas lainnya.</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button onclick="window.app.downloadQuestionWordTemplate()" class="btn-3d px-3.5 py-2 rounded-xl bg-white border border-blue-200 text-blue-700 text-xs font-bold">
@@ -3203,7 +3209,7 @@
             </div>
           </div>
 
-          <!-- TAB PEMISAH SOAL ANTARA KELAS VII, VIII, DAN IX -->
+          <!-- TAB FILTER TINGKAT KELAS VII, VIII, DAN IX -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             ${[
               { id: 'ALL', label: 'Semua Tingkat', count: validMasterExams.length, icon: 'fa-layer-group' },
@@ -3226,59 +3232,37 @@
             }).join('')}
           </div>
 
-          <!-- NOTIFIKASI SINKRONISASI OTOMATIS MAPEL PER JENJANG KELAS VII, VIII, IX -->
-          ${unlinkedMasterSubjects.length > 0 ? `
-            <div class="glass-card p-4 rounded-2xl bg-indigo-50/95 border border-indigo-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div class="flex items-start sm:items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow">
-                  <i class="fa-solid fa-wand-magic-sparkles"></i>
-                </div>
-                <div>
-                  <div class="text-xs sm:text-sm font-extrabold text-slate-900">
-                    Terdapat ${unlinkedMasterSubjects.length} Mata Pelajaran Data Master yang belum memiliki paket lengkap ${state.examBankLevelFilter === 'ALL' ? '(Kelas VII, VIII, IX)' : '(Kelas ' + state.examBankLevelFilter + ')'}
-                  </div>
-                  <p class="text-[11px] text-slate-600 mt-0.5">
-                    Mata Pelajaran: <strong>${unlinkedMasterSubjects.map(u => escapeHtml(u.name)).join(', ')}</strong>.
-                  </p>
-                </div>
-              </div>
-              <button type="button" onclick="window.app.syncAllMasterSubjectsToBankSoal()" class="btn-3d whitespace-nowrap px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold shadow-md">
-                <i class="fa-solid fa-bolt mr-1.5"></i>Siapkan Paket Kelas VII, VIII & IX Otomatis
-              </button>
-            </div>
-          ` : ''}
-
-          <!-- PANEL FILTER MATA PELAJARAN & TOMBOL PILIH JENJANG KELAS VII, VIII, IX -->
+          <!-- PANEL UTAMA PEMILIHAN MATA PELAJARAN & TARGET KELAS/ROMBEL BANK SOAL -->
           <div class="glass-card p-5 rounded-2xl space-y-4">
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
               <!-- Dropdown 1: Pilih Mata Pelajaran dari Data Master -->
               <div class="lg:col-span-5">
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">
                   1. Pilih Mata Pelajaran (Data Master):
                 </label>
-                <select onchange="window.app.setExamBankSubjectFilter(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
-                  <option value="ALL">-- Semua Mata Pelajaran Data Master (${subjectsForCurrentLevel.length} Mapel) --</option>
+                <select onchange="window.app.setExamBankSubjectFilter(this.value)" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm font-bold text-slate-800">
+                  <option value="ALL" ${state.examBankSubjectFilter === 'ALL' ? 'selected' : ''}>-- Semua Mata Pelajaran (${subjectsForCurrentLevel.length} Mapel) --</option>
                   ${subjectsForCurrentLevel.map(s => {
-                    return `<option value="${escapeHtml(s.name)}" ${normalizeSubjectKey(state.examBankSubjectFilter) === normalizeSubjectKey(s.name) ? 'selected' : ''}>${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
+                    return `<option value="${escapeHtml(s.name)}" ${normalizeSubjectKey(activeSubjectName) === normalizeSubjectKey(s.name) && state.examBankSubjectFilter !== 'ALL' ? 'selected' : ''}>${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
                   }).join('')}
                 </select>
               </div>
 
-              <!-- Dropdown 2: Pilih Paket Ujian / Bank Soal -->
+              <!-- Dropdown 2: Daftar Paket Bank Soal yang Sudah Dibuat -->
               <div class="lg:col-span-7">
-                <label class="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  2. Paket Bank Soal Aktif ${state.examBankLevelFilter === 'ALL' ? '(Semua Tingkat)' : '(Khusus Kelas ' + state.examBankLevelFilter + ')'}:
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">
+                  2. Daftar Paket Bank Soal Tersimpan ${state.examBankLevelFilter === 'ALL' ? '(Semua Tingkat)' : '(Tingkat ' + state.examBankLevelFilter + ')'}:
                 </label>
                 ${filteredExamsByLevel.length === 0 ? `
-                  <div class="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
-                    <span>Pilih Mata Pelajaran lalu klik tombol jenjang kelas di bawah untuk membuat paket soal.</span>
+                  <div class="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900">
+                    Belum ada paket soal pada filter ini. Klik salah satu tombol <strong>Jenjang / Kelas</strong> di bawah untuk langsung membuat paket baru.
                   </div>
                 ` : `
                   <div class="flex gap-2">
-                    <select onchange="window.app.selectExamForQuestions(this.value)" class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-800">
+                    <select onchange="window.app.selectExamForQuestions(this.value)" class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 text-sm font-bold text-slate-800">
                       ${filteredExamsByLevel.map(e => {
                         const qLen = state.questions.filter(q => q.exam_id === e.id).length;
-                        return `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[Kelas ${escapeHtml(e.target_class || getExamGradeLevel(e))} • ${escapeHtml(e.subject)}] ${escapeHtml(e.title)} (${qLen} Soal)</option>`;
+                        return `<option value="${e.id}" ${e.id === state.selectedExamId ? 'selected' : ''}>[Target: ${escapeHtml(e.target_class || 'Semua')} • ${escapeHtml(e.subject)}] ${escapeHtml(e.title)} (${qLen} Soal)</option>`;
                       }).join('')}
                     </select>
                     ${currentExam ? `
@@ -3291,30 +3275,74 @@
               </div>
             </div>
 
-            <!-- BAR TOMBOL LANGSUNG PILIH JENJANG KELAS VII, VIII, IX UNTUK MATA PELAJARAN TERPILIH -->
+            <!-- PANEL PILIH TARGET KELAS BANK SOAL (PER JENJANG ATAU KHUSUS 1 ROMBEL MISAL IX.4 / IX.5 SAJA) -->
             ${activeSubjectName ? `
-              <div class="p-3.5 rounded-2xl bg-blue-50/90 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div class="text-xs font-extrabold text-blue-950">
-                    <i class="fa-solid fa-layer-group mr-1.5 text-blue-600"></i>Pilih Jenjang Kelas untuk Bank Soal <span class="underline">${escapeHtml(activeSubjectName)}</span>:
+              <div class="p-4 rounded-2xl bg-slate-50 border border-blue-200/90 space-y-3.5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
+                  <div>
+                    <div class="text-xs sm:text-sm font-extrabold text-slate-900">
+                      <i class="fa-solid fa-sitemap mr-1.5 text-blue-600"></i>3. Pilih Target Kelas Bank Soal untuk Mapel: <span class="text-blue-700 underline">${escapeHtml(activeSubjectName)}</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 mt-0.5">
+                      Klik tombol di bawah untuk membuka atau membuat <strong>Bank Soal Terpisah</strong>. Memilih <strong>IX.4</strong> atau <strong>IX.5</strong> akan membuat paket soal tersendiri <strong>tanpa merubah</strong> Bank Soal di kelas lainnya.
+                    </p>
                   </div>
-                  <p class="text-[11px] text-blue-700 mt-0.5">Klik salah satu tombol jenjang di samping untuk menginput/memisahkan soal Kelas VII, VIII, atau IX.</p>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                  ${['VII', 'VIII', 'IX'].map(lvl => {
-                    const pkg = validMasterExams.find(ex =>
-                      normalizeSubjectKey(ex.subject) === normalizeSubjectKey(activeSubjectName) &&
-                      getExamGradeLevel(ex) === lvl
-                    );
-                    const qCount = pkg ? state.questions.filter(q => q.exam_id === pkg.id).length : 0;
-                    const isCurrent = currentExam && pkg && currentExam.id === pkg.id;
-                    return `
-                      <button type="button" onclick="window.app.openBankSoalForSubject('${escapeHtml(activeSubjectName)}', '${lvl}')" class="btn-3d px-4 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${isCurrent ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25 ring-2 ring-blue-300' : pkg ? 'bg-white text-blue-700 border border-blue-300' : 'bg-emerald-600 text-white shadow-sm'}">
-                        <i class="fa-solid ${pkg ? 'fa-folder-open' : 'fa-plus-circle'}"></i>
-                        <span>Kelas ${lvl} (${pkg ? qCount + ' Soal' : 'Buat Paket'})</span>
-                      </button>
-                    `;
-                  }).join('')}
+
+                <!-- Pilihan A: Bank Soal Untuk Seluruh Kelas Per Jenjang (Semua VII, Semua VIII, Semua IX) -->
+                <div>
+                  <div class="text-[11px] font-extrabold uppercase text-blue-800 mb-1.5">
+                    <i class="fa-solid fa-layer-group mr-1"></i>A. Bank Soal Per Jenjang (Berlaku untuk Seluruh Rombel pada Jenjang Tersebut):
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    ${[
+                      { target: 'Semua VII', label: 'Seluruh Kelas VII' },
+                      { target: 'Semua VIII', label: 'Seluruh Kelas VIII' },
+                      { target: 'Semua IX', label: 'Seluruh Kelas IX' },
+                      { target: 'Semua', label: 'Semua Jenjang (Umum)' }
+                    ].map(item => {
+                      const pkg = findExactPackage(activeSubjectName, item.target);
+                      const qCount = pkg ? state.questions.filter(q => q.exam_id === pkg.id).length : 0;
+                      const isCurrent = currentExam && pkg && currentExam.id === pkg.id;
+                      return `
+                        <button type="button" onclick="window.app.openBankSoalForSubject(decodeURIComponent('${encodedActiveSubject}'), '${item.target}')" class="btn-3d px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition ${isCurrent ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-300' : pkg ? 'bg-white text-blue-700 border border-blue-300' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'}">
+                          <i class="fa-solid ${isCurrent ? 'fa-circle-check' : pkg ? 'fa-folder-open' : 'fa-plus-circle'}"></i>
+                          <span>${item.label} (${pkg ? qCount + ' Soal' : 'Buat Paket'})</span>
+                        </button>
+                      `;
+                    }).join('')}
+                  </div>
+                </div>
+
+                <!-- Pilihan B: Bank Soal Spesifik Per Rombel (Misal Hanya VII.1, IX.4, atau IX.5 Saja) -->
+                <div class="pt-2 border-t border-slate-200/80">
+                  <div class="text-[11px] font-extrabold uppercase text-indigo-800 mb-2">
+                    <i class="fa-solid fa-chalkboard-user mr-1"></i>B. Bank Soal Khusus 1 Kelas / Rombel Tertentu Saja (Misal Hanya IX.4 atau IX.5 Saja):
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                    ${['VII', 'VIII', 'IX'].map(lvl => {
+                      const rombels = classesByLevel[lvl] || [];
+                      return `
+                        <div class="p-2.5 rounded-xl bg-white border border-slate-200/90">
+                          <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1.5">Rombel Tingkat ${lvl}:</div>
+                          <div class="flex flex-wrap gap-1.5">
+                            ${rombels.map(clsObj => {
+                              const clsName = clsObj.class_name;
+                              const pkg = findExactPackage(activeSubjectName, clsName);
+                              const qCount = pkg ? state.questions.filter(q => q.exam_id === pkg.id).length : 0;
+                              const isCurrent = currentExam && pkg && currentExam.id === pkg.id;
+                              return `
+                                <button type="button" onclick="window.app.openBankSoalForSubject(decodeURIComponent('${encodedActiveSubject}'), '${escapeHtml(clsName)}')" class="btn-3d px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold flex items-center gap-1 transition ${isCurrent ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300' : pkg ? 'bg-indigo-50 text-indigo-700 border border-indigo-300' : 'bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-700 border border-slate-200'}" title="${pkg ? 'Buka Bank Soal Khusus Kelas ' + clsName + ' (' + qCount + ' Soal)' : 'Buat Bank Soal Terpisah Khusus Kelas ' + clsName}">
+                                  <span>${escapeHtml(clsName)}</span>
+                                  <span class="text-[10px] ${isCurrent ? 'text-indigo-100' : pkg ? 'text-indigo-600' : 'text-slate-400'}">${pkg ? '(' + qCount + ')' : '+'}</span>
+                                </button>
+                              `;
+                            }).join('')}
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
                 </div>
               </div>
             ` : ''}
@@ -3340,19 +3368,12 @@
             </div>
 
             ${currentExam ? `
-              <!-- Bar Pengaturan Peruntukan Kelas & Acak Soal/Opsi -->
+              <!-- Informasi Paket yang Sedang Aktif & Pengaturan Acak -->
               <div class="pt-3 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
                 <div class="flex flex-wrap items-center gap-2">
-                  <span class="text-xs font-bold text-slate-600">
-                    <i class="fa-solid fa-graduation-cap text-blue-600 mr-1"></i>Peruntukan Kelas Paket Ini:
+                  <span class="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-extrabold shadow-sm">
+                    <i class="fa-solid fa-folder-open mr-1.5"></i>Paket Aktif: ${escapeHtml(currentExam.subject)} • Target Kelas: ${escapeHtml(currentExam.target_class)} (${examQuestions.length} Soal)
                   </span>
-                  <select onchange="window.app.updateExamTargetClass('${currentExam.id}', this.value)" class="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-extrabold text-blue-800">
-                    <option value="Semua VII" ${currentExam.target_class === 'Semua VII' ? 'selected' : ''}>Semua Tingkat VII</option>
-                    <option value="Semua VIII" ${currentExam.target_class === 'Semua VIII' ? 'selected' : ''}>Semua Tingkat VIII</option>
-                    <option value="Semua IX" ${currentExam.target_class === 'Semua IX' ? 'selected' : ''}>Semua Tingkat IX</option>
-                    <option value="Semua" ${currentExam.target_class === 'Semua' ? 'selected' : ''}>Semua Kelas (Umum)</option>
-                    ${state.classes.map(c => `<option value="${escapeHtml(c.class_name)}" ${currentExam.target_class === c.class_name ? 'selected' : ''}>Kelas ${escapeHtml(c.class_name)}</option>`).join('')}
-                  </select>
                 </div>
 
                 <div class="flex flex-wrap gap-2">
@@ -3375,12 +3396,13 @@
             ${!currentExam ? `
               <div class="glass-card p-8 rounded-2xl text-center text-slate-500 text-sm space-y-3">
                 <i class="fa-solid fa-book-open-reader text-3xl text-blue-500 block"></i>
-                <div>Pilih <strong>Mata Pelajaran</strong> pada dropdown di atas, lalu klik tombol <strong>Kelas VII</strong>, <strong>Kelas VIII</strong>, atau <strong>Kelas IX</strong> untuk mulai menginput soal.</div>
+                <div>Pilih <strong>Mata Pelajaran</strong> pada dropdown nomor 1 di atas, lalu klik tombol <strong>Seluruh Kelas VII / VIII / IX</strong> atau <strong>Rombel Spesifik (misal IX.4 / IX.5)</strong> untuk mulai menginput soal.</div>
               </div>
             ` : examQuestions.length === 0 ? `
               <div class="glass-card p-10 rounded-2xl text-center text-slate-400 text-sm">
-                <i class="fa-solid fa-folder-open text-3xl mb-2 block"></i>
-                Belum ada butir soal untuk <strong>${escapeHtml(currentExam.subject)} - ${escapeHtml(currentExam.title)} (Kelas ${escapeHtml(currentExam.target_class)})</strong>. Gunakan tombol <strong>Tambah Soal Manual</strong> atau <strong>Impor Word/Excel</strong> di atas.
+                <i class="fa-solid fa-folder-open text-3xl mb-2 block text-blue-500"></i>
+                Paket <strong>${escapeHtml(currentExam.subject)}</strong> khusus <strong>Kelas ${escapeHtml(currentExam.target_class)}</strong> sudah siap (masih 0 soal).<br/>
+                Silakan klik <strong>Tambah Soal Manual</strong> atau <strong>Impor Word/Excel</strong> di atas. Soal yang diinput di sini tidak akan merubah Bank Soal kelas lain.
               </div>
             ` : examQuestions.map(q => `
               <div class="glass-card hover-lift p-5 rounded-2xl">
@@ -4868,47 +4890,38 @@
         }
       },
 
-      // Buka atau Buat Otomatis Paket Bank Soal Spesifik Jenjang (VII / VIII / IX)
-      async openBankSoalForSubject(subjectName, subjectLevel = 'VII') {
-        const cleanLevel = ['VII', 'VIII', 'IX'].includes(String(subjectLevel).toUpperCase().trim())
-          ? String(subjectLevel).toUpperCase().trim()
-          : (state.examBankLevelFilter !== 'ALL' ? state.examBankLevelFilter : 'VII');
+      // Buka atau Buat Otomatis Paket Bank Soal Spesifik Jenjang ('Semua VII'/'VIII'/'IX') ATAU Spesifik Rombel ('IX.4', 'IX.5', dst.)
+      async openBankSoalForSubject(subjectName, targetClassOrLevel = 'Semua VII') {
+        if (!subjectName) return;
+        const rawTarget = String(targetClassOrLevel || 'Semua VII').trim();
+        const upperTarget = rawTarget.toUpperCase();
 
-        state.examBankLevelFilter = cleanLevel;
-        state.examBankSubjectFilter = subjectName;
-
-        let existingExam = state.exams.find(ex =>
-          normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
-          getExamGradeLevel(ex) === cleanLevel
-        );
-
-        if (!existingExam) {
-          const emptyGeneralExam = state.exams.find(ex =>
-            normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
-            getExamGradeLevel(ex) === 'Semua' &&
-            state.questions.filter(q => q.exam_id === ex.id).length === 0
-          );
-
-          if (emptyGeneralExam) {
-            const updatedTitle = `Bank Soal ${subjectName} (Kelas ${cleanLevel})`;
-            const updatedTarget = `Semua ${cleanLevel}`;
-            if (IS_PREVIEW) {
-              emptyGeneralExam.title = updatedTitle;
-              emptyGeneralExam.target_class = updatedTarget;
-              existingExam = emptyGeneralExam;
-            } else {
-              await supabase.from('exams').update({
-                title: updatedTitle,
-                target_class: updatedTarget
-              }).eq('id', emptyGeneralExam.id);
-              await loadAllAdminData();
-              existingExam = state.exams.find(e => e.id === emptyGeneralExam.id);
-            }
-          }
+        // Tentukan nama target_class yang presisi
+        let exactTargetClass = rawTarget;
+        if (['VII', 'VIII', 'IX'].includes(upperTarget)) {
+          exactTargetClass = `Semua ${upperTarget}`;
+        } else if (upperTarget === 'ALL' || upperTarget === 'SEMUA') {
+          exactTargetClass = 'Semua';
         }
 
+        // Tentukan filter tab tingkat ('ALL' | 'VII' | 'VIII' | 'IX') agar tampilan tab menyesuaikan otomatis
+        let detectedLevel = 'ALL';
+        if (exactTargetClass.includes('VIII') || exactTargetClass.startsWith('8')) detectedLevel = 'VIII';
+        else if (exactTargetClass.includes('IX') || exactTargetClass.startsWith('9')) detectedLevel = 'IX';
+        else if (exactTargetClass.includes('VII') || exactTargetClass.startsWith('7')) detectedLevel = 'VII';
+
+        state.examBankLevelFilter = detectedLevel;
+        state.examBankSubjectFilter = subjectName;
+
+        // Cari paket ujian yang Mata Pelajaran DAN Target Kelasnya SAMA PERSIS (misal khusus 'IX.4' saja atau 'Semua IX' saja)
+        let existingExam = state.exams.find(ex =>
+          normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
+          String(ex.target_class || '').trim().toUpperCase() === exactTargetClass.toUpperCase()
+        );
+
+        // Jika belum ada paket untuk Target Kelas spesifik ini, buat paket baru TANPA mengubah paket kelas lain!
         if (!existingExam) {
-          existingExam = await window.app.createQuickExamPackageForSubject(subjectName, true, cleanLevel);
+          existingExam = await window.app.createQuickExamPackageForSubject(subjectName, true, exactTargetClass);
         }
 
         if (existingExam) {
@@ -5600,16 +5613,31 @@
         triggerTransitionShadow();
       },
 
-      // ----------------- MANAJEMEN BANK SOAL & IMPOR (TERINTEGRASI DATA MASTER MAPEL) -----------------
-      setExamBankLevel(level) {
+      // ----------------- MANAJEMEN BANK SOAL & IMPOR (TERINTEGRASI DATA MASTER MAPEL & PER ROMBEL) -----------------
+      async setExamBankLevel(level) {
         state.examBankLevelFilter = level;
-        const matching = state.exams.filter(ex => {
-          const matchLvl = doesExamMatchLevelFilter(ex, level);
-          const matchSub = state.examBankSubjectFilter === 'ALL'
-            || normalizeSubjectKey(ex.subject) === normalizeSubjectKey(state.examBankSubjectFilter);
-          return matchLvl && matchSub;
-        });
-        state.selectedExamId = matching.length > 0 ? matching[0].id : null;
+
+        // Jika ada mata pelajaran yang sedang dipilih, otomatis buka/siapkan paket jenjang tersebut agar tidak pernah kosong
+        if (state.examBankSubjectFilter !== 'ALL') {
+          const matching = state.exams.filter(ex =>
+            doesExamMatchLevelFilter(ex, level) &&
+            normalizeSubjectKey(ex.subject) === normalizeSubjectKey(state.examBankSubjectFilter)
+          );
+          if (matching.length > 0) {
+            state.selectedExamId = matching[0].id;
+            renderApp();
+            triggerTransitionShadow();
+          } else if (['VII', 'VIII', 'IX'].includes(level)) {
+            await window.app.openBankSoalForSubject(state.examBankSubjectFilter, `Semua ${level}`);
+          } else {
+            state.selectedExamId = null;
+            renderApp();
+          }
+          return;
+        }
+
+        const matchingAll = state.exams.filter(ex => doesExamMatchLevelFilter(ex, level));
+        state.selectedExamId = matchingAll.length > 0 ? matchingAll[0].id : null;
         renderApp();
         triggerTransitionShadow();
       },
@@ -5624,8 +5652,6 @@
           return;
         }
 
-        // Jika tab masih di 'ALL', otomatis arahkan ke jenjang yang tersedia atau buat jenjang Kelas VII
-        const targetLvl = state.examBankLevelFilter !== 'ALL' ? state.examBankLevelFilter : 'VII';
         const matching = state.exams.filter(ex =>
           normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subjectName) &&
           doesExamMatchLevelFilter(ex, state.examBankLevelFilter)
@@ -5636,12 +5662,19 @@
           renderApp();
           triggerTransitionShadow();
         } else {
-          await window.app.openBankSoalForSubject(subjectName, targetLvl);
+          const targetCls = ['VII', 'VIII', 'IX'].includes(state.examBankLevelFilter)
+            ? `Semua ${state.examBankLevelFilter}`
+            : 'Semua VII';
+          await window.app.openBankSoalForSubject(subjectName, targetCls);
         }
       },
 
       selectExamForQuestions(examId) {
         state.selectedExamId = examId;
+        const ex = state.exams.find(e => e.id === examId);
+        if (ex && ex.subject) {
+          state.examBankSubjectFilter = ex.subject;
+        }
         renderApp();
         triggerTransitionShadow();
       },
@@ -5649,18 +5682,12 @@
       async updateExamTargetClass(examId, newTargetClass) {
         const ex = state.exams.find(e => e.id === examId);
         if (!ex) return;
-        ex.target_class = newTargetClass;
-        if (!IS_PREVIEW && supabase) {
-          const { error } = await supabase.from('exams').update({ target_class: newTargetClass }).eq('id', examId);
-          if (error) return showToast('Gagal mengubah peruntukan kelas: ' + error.message, 'error');
-          await loadAllAdminData();
-        }
-        showToast(`Peruntukan paket soal diubah ke ${newTargetClass}`, 'success');
-        renderApp();
+        // Jangan menimpa paket kelas lama: buka atau buatkan paket terpisah untuk newTargetClass
+        await window.app.openBankSoalForSubject(ex.subject, newTargetClass);
       },
 
-      // Buat Paket Bank Soal Otomatis dari Mata Pelajaran Data Master sesuai Jenjang Kelas (VII / VIII / IX)
-      async createQuickExamPackageForSubject(subjectName = '', silentAuto = false, forcedLevel = null) {
+      // Buat Paket Bank Soal Baru untuk Mata Pelajaran & Target Kelas Spesifik (Semua VII/VIII/IX atau Rombel IX.4/IX.5)
+      async createQuickExamPackageForSubject(subjectName = '', silentAuto = false, forcedTargetClass = null) {
         const allSubjects = getAllMasterAndExamSubjects();
         let chosenSubject = subjectName;
 
@@ -5676,19 +5703,21 @@
         }
 
         const masterSub = state.subjects.find(s => normalizeSubjectKey(s.name) === normalizeSubjectKey(chosenSubject));
-        const levelToUse = forcedLevel
-          || (state.examBankLevelFilter !== 'ALL' ? state.examBankLevelFilter : 'VII');
+        let targetClass = forcedTargetClass;
+        if (!targetClass) {
+          targetClass = ['VII', 'VIII', 'IX'].includes(state.examBankLevelFilter)
+            ? `Semua ${state.examBankLevelFilter}`
+            : 'Semua VII';
+        } else if (['VII', 'VIII', 'IX'].includes(String(targetClass).toUpperCase().trim())) {
+          targetClass = `Semua ${String(targetClass).toUpperCase().trim()}`;
+        }
 
-        const targetClass = ['VII', 'VIII', 'IX'].includes(levelToUse)
-          ? `Semua ${levelToUse}`
-          : 'Semua VII';
-
-        const defaultTitle = `Bank Soal ${chosenSubject} (Kelas ${levelToUse})`;
+        const defaultTitle = `Bank Soal ${chosenSubject} (Kelas ${targetClass})`;
         let finalTitle = defaultTitle;
 
         if (!silentAuto) {
           const promptedTitle = await customPrompt(
-            `Buat Paket Bank Soal untuk Mata Pelajaran "${chosenSubject}" Kelas ${levelToUse}.\nMasukkan Judul Paket Soal:`,
+            `Buat Paket Bank Soal untuk Mata Pelajaran "${chosenSubject}" (${targetClass}).\nMasukkan Judul Paket Soal:`,
             defaultTitle,
             'Judul Paket Bank Soal'
           );
@@ -5709,14 +5738,14 @@
           room_name: 'Ruang Utama',
           duration_minutes: 60,
           max_violations: 3,
-          shuffle_questions: false,
-          shuffle_options: false,
+          shuffle_questions: true,
+          shuffle_options: true,
           is_active: true,
           academic_year: period.year_name,
           semester: period.semester
         };
 
-        showLoadingPopup(`Menyiapkan Paket ${chosenSubject} Kelas ${levelToUse}...`);
+        showLoadingPopup(`Menyiapkan Paket ${chosenSubject} (${targetClass})...`);
         try {
           let createdExam = null;
           if (IS_PREVIEW) {
@@ -5733,7 +5762,7 @@
             state.selectedExamId = createdExam.id;
             state.examBankSubjectFilter = chosenSubject;
           }
-          showToast(`Paket Bank Soal "${chosenSubject}" Kelas ${levelToUse} siap diisi soal!`, 'success');
+          showToast(`Paket Bank Soal "${chosenSubject}" (${targetClass}) siap diisi soal!`, 'success');
           renderApp();
           return createdExam;
         } catch (err) {
@@ -5744,7 +5773,6 @@
         }
       },
 
-      // Sinkronkan Sekaligus Seluruh Mata Pelajaran di Data Master agar punya Paket Kelas VII, VIII, dan IX
       async syncAllMasterSubjectsToBankSoal() {
         const allMasterSubjects = getAllMasterAndExamSubjects();
         const levelsToSync = state.examBankLevelFilter === 'ALL'
@@ -5756,16 +5784,17 @@
 
         allMasterSubjects.forEach(sub => {
           levelsToSync.forEach(lvl => {
+            const exactTarget = `Semua ${lvl}`;
             const exists = state.exams.some(ex =>
               normalizeSubjectKey(ex.subject) === normalizeSubjectKey(sub.name) &&
-              getExamGradeLevel(ex) === lvl
+              String(ex.target_class || '').trim().toUpperCase() === exactTarget.toUpperCase()
             );
             if (!exists) {
               payloads.push({
-                title: `Bank Soal ${sub.name} (Kelas ${lvl})`,
+                title: `Bank Soal ${sub.name} (Kelas ${exactTarget})`,
                 subject: sub.name,
                 subject_code: sub.code || '',
-                target_class: `Semua ${lvl}`,
+                target_class: exactTarget,
                 exam_date: new Date().toISOString().slice(0, 10),
                 start_time: '07:30',
                 end_time: '09:30',
@@ -5773,8 +5802,8 @@
                 room_name: 'Ruang Utama',
                 duration_minutes: 60,
                 max_violations: 3,
-                shuffle_questions: false,
-                shuffle_options: false,
+                shuffle_questions: true,
+                shuffle_options: true,
                 is_active: true,
                 academic_year: period.year_name,
                 semester: period.semester
@@ -5784,11 +5813,11 @@
         });
 
         if (payloads.length === 0) {
-          showToast('Seluruh Mata Pelajaran sudah memiliki paket soal lengkap per jenjang kelas.', 'info');
+          showToast('Seluruh Mata Pelajaran sudah memiliki paket soal per jenjang.', 'info');
           return;
         }
 
-        showLoadingPopup(`Menyiapkan ${payloads.length} Paket Bank Soal Per Jenjang...`);
+        showLoadingPopup(`Menyiapkan ${payloads.length} Paket Bank Soal...`);
         try {
           if (IS_PREVIEW) {
             payloads.forEach((p, idx) => state.exams.unshift({ id: 'ex-sync-' + Date.now() + '-' + idx, ...p }));
@@ -5800,7 +5829,7 @@
               state.selectedExamId = data[0].id;
             }
           }
-          showToast(`Berhasil menyiapkan ${payloads.length} paket Bank Soal per jenjang kelas!`, 'success');
+          showToast(`Berhasil menyiapkan ${payloads.length} paket Bank Soal per jenjang!`, 'success');
           renderApp();
         } catch (err) {
           showToast('Gagal menyinkronkan mata pelajaran: ' + err.message, 'error');
@@ -5811,13 +5840,15 @@
 
       async ensureSelectedExamPackageBeforeInput() {
         if (state.selectedExamId) return true;
-        const targetLvl = state.examBankLevelFilter !== 'ALL' ? state.examBankLevelFilter : 'VII';
+        const targetCls = ['VII', 'VIII', 'IX'].includes(state.examBankLevelFilter)
+          ? `Semua ${state.examBankLevelFilter}`
+          : 'Semua VII';
         if (state.examBankSubjectFilter !== 'ALL') {
-          await window.app.openBankSoalForSubject(state.examBankSubjectFilter, targetLvl);
+          await window.app.openBankSoalForSubject(state.examBankSubjectFilter, targetCls);
           return !!state.selectedExamId;
         }
         if (state.subjects.length > 0) {
-          await window.app.openBankSoalForSubject(state.subjects[0].name, targetLvl);
+          await window.app.openBankSoalForSubject(state.subjects[0].name, targetCls);
           return !!state.selectedExamId;
         }
         showToast('Pilih Mata Pelajaran terlebih dahulu!', 'warning');
