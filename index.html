@@ -2025,7 +2025,7 @@
                           const pkg = subExams.find(e => getExamGradeLevel(e) === lvl);
                           const qCount = pkg ? state.questions.filter(q => q.exam_id === pkg.id).length : 0;
                           return `
-                            <button onclick="window.app.openBankSoalForSubject('${escapeHtml(sub.name)}', '${lvl}')" class="btn-3d py-1.5 px-2 rounded-xl ${pkg ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'} text-[11px] font-extrabold text-center">
+                            <button onclick="window.app.openBankSoalForSubject(decodeURIComponent('${encodeURIComponent(sub.name).replace(/'/g, '%27')}'), '${lvl}')" class="btn-3d py-1.5 px-2 rounded-xl ${pkg ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'} text-[11px] font-extrabold text-center">
                               Kelas ${lvl} (${qCount})
                             </button>
                           `;
@@ -2691,10 +2691,13 @@
                 </button>
               ` : ''}
               <button type="button" onclick="window.app.openScheduleModal()" class="btn-3d px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold shadow-md shadow-blue-600/20">
-                <i class="fa-solid fa-calendar-plus mr-1.5"></i>Tambah Jadwal Ujian
-              </button>
-            </div>
-          </div>
+             <i class="fa-solid fa-calendar-plus mr-1.5"></i>Tambah Jadwal Ujian
+           </button>
+           ${filteredExams.length > 0 ? `
+             <button type="button" onclick="window.app.deleteAllSchedules()" class="btn-3d px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md">
+               <i class="fa-solid fa-trash-can mr-1.5"></i>Hapus Semua Jadwal (${filteredExams.length})
+             </button>
+           ` : ''}
 
           <!-- Filter Simpel Kelas & Mata Pelajaran -->
           <div class="glass-card p-4 rounded-2xl grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
@@ -3173,7 +3176,7 @@
       }
 
       const activeSubjectName = state.examBankSubjectFilter !== 'ALL' ? state.examBankSubjectFilter : '';
-      const encodedActiveSubject = encodeURIComponent(activeSubjectName);
+      const encodedActiveSubject = encodeURIComponent(activeSubjectName).replace(/'/g, '%27');
 
       // Daftar paket untuk mata pelajaran yang sedang dipilih
       const subjectPackages = state.exams.filter(ex =>
@@ -5446,6 +5449,69 @@
           renderApp();
         } catch (err) {
           showToast('Gagal menyimpan pengaturan acak: ' + err.message, 'error');
+        } finally {
+          hideLoadingPopup();
+        }
+      },
+
+      async deleteAllSchedules() {
+        const clsFilter = state.scheduleFilterClass || 'ALL';
+        const subFilter = state.scheduleFilterSubject || 'ALL';
+
+        // Hanya ambil jadwal ujian manual (wadah Bank Soal tidak ikut terhapus)
+        const targetSchedules = state.exams.filter(ex => {
+          if (isBankSoalContainer(ex)) return false;
+
+          let matchClass = true;
+          if (clsFilter !== 'ALL') {
+            const tc = String(ex.target_class || 'Semua').trim();
+            if (clsFilter === 'LEVEL_VII') matchClass = tc === 'Semua' || tc === 'Semua VII' || tc.startsWith('VII.');
+            else if (clsFilter === 'LEVEL_VIII') matchClass = tc === 'Semua' || tc === 'Semua VIII' || tc.startsWith('VIII.');
+            else if (clsFilter === 'LEVEL_IX') matchClass = tc === 'Semua' || tc === 'Semua IX' || tc.startsWith('IX.');
+            else {
+              const gradeLvl = clsFilter.split('.')[0];
+              matchClass = tc === clsFilter || tc === 'Semua' || tc === ('Semua ' + gradeLvl);
+            }
+          }
+
+          let matchSubject = true;
+          if (subFilter !== 'ALL') {
+            matchSubject = normalizeSubjectKey(ex.subject) === normalizeSubjectKey(subFilter);
+          }
+
+          return matchClass && matchSubject;
+        });
+
+        if (targetSchedules.length === 0) {
+          showToast('Tidak ada jadwal ujian untuk dihapus.', 'warning');
+          return;
+        }
+
+        const ok = await customConfirm(
+          `PERINGATAN HAPUS SEMUA JADWAL!\n\nApakah Anda yakin ingin menghapus ${targetSchedules.length} jadwal ujian yang tampil saat ini?\n(Data Bank Soal Anda tetap tersimpan dengan aman).`,
+          'Konfirmasi Hapus Semua Jadwal'
+        );
+        if (!ok) return;
+
+        showLoadingPopup(`Menghapus ${targetSchedules.length} Jadwal Ujian...`);
+        try {
+          const targetIds = targetSchedules.map(e => e.id);
+          if (IS_PREVIEW) {
+            state.exams = state.exams.filter(e => !targetIds.includes(e.id));
+          } else {
+            const chunkSize = 100;
+            for (let i = 0; i < targetIds.length; i += chunkSize) {
+              const batch = targetIds.slice(i, i + chunkSize);
+              const { error } = await supabase.from('exams').delete().in('id', batch);
+              if (error) throw error;
+            }
+            await loadAllAdminData();
+          }
+          showSuccessLogoPopup();
+          showToast(`Berhasil menghapus ${targetSchedules.length} jadwal ujian`, 'success');
+          renderApp();
+        } catch (err) {
+          showToast('Gagal menghapus semua jadwal: ' + err.message, 'error');
         } finally {
           hideLoadingPopup();
         }
