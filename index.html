@@ -1161,6 +1161,29 @@
     // ============================================================================
     // SINKRONISASI DATA SUPABASE
     // ============================================================================
+    // Helper untuk menarik SEMUA data dari Supabase secara bertahap (anti terpotong batas 1.000 baris)
+    async function fetchAllSupabaseRows(tableName, orderConfigs = []) {
+      const pageSize = 500;
+      let allRows = [];
+      let from = 0;
+
+      while (true) {
+        let query = supabase.from(tableName).select('*');
+        for (const ord of orderConfigs) {
+          query = query.order(ord.column, { ascending: ord.ascending });
+        }
+        const { data, error } = await query.range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        allRows = allRows.concat(data);
+        if (data.length < pageSize) break;
+        from += data.length;
+      }
+
+      return allRows;
+    }
+
     async function loadAllAdminData() {
       if (IS_PREVIEW || !supabase) return;
 
@@ -1170,20 +1193,33 @@
           clsRes,
           subRes,
           tchRes,
-          stdRes,
-          exRes,
-          qRes,
-          sesRes,
+          allStudents,
+          allExams,
+          allQuestions,
+          allSessions,
           cardRes
         ] = await Promise.all([
           supabase.from('academic_years').select('*').order('created_at', { ascending: false }),
           supabase.from('classes').select('*').order('class_name', { ascending: true }),
           supabase.from('subjects').select('*').order('code', { ascending: true }),
           supabase.from('teachers').select('*').order('name', { ascending: true }),
-          supabase.from('students').select('*').order('class_name', { ascending: true }).order('name', { ascending: true }),
-          supabase.from('exams').select('*').order('created_at', { ascending: false }),
-          supabase.from('questions').select('*').order('order_number', { ascending: true }),
-          supabase.from('exam_sessions').select('*').order('started_at', { ascending: false }),
+          fetchAllSupabaseRows('students', [
+            { column: 'class_name', ascending: true },
+            { column: 'name', ascending: true },
+            { column: 'id', ascending: true }
+          ]),
+          fetchAllSupabaseRows('exams', [
+            { column: 'created_at', ascending: false },
+            { column: 'id', ascending: true }
+          ]),
+          fetchAllSupabaseRows('questions', [
+            { column: 'order_number', ascending: true },
+            { column: 'id', ascending: true }
+          ]),
+          fetchAllSupabaseRows('exam_sessions', [
+            { column: 'started_at', ascending: false },
+            { column: 'id', ascending: true }
+          ]),
           supabase.from('card_settings').select('*').limit(1).maybeSingle()
         ]);
 
@@ -1191,10 +1227,11 @@
         if (clsRes.data) state.classes = clsRes.data;
         if (subRes.data) state.subjects = subRes.data;
         if (tchRes.data) state.teachers = tchRes.data;
-        if (stdRes.data) state.students = stdRes.data;
-        if (exRes.data) state.exams = exRes.data;
-        if (qRes.data) state.questions = qRes.data;
-        if (sesRes.data) state.exam_sessions = sesRes.data;
+        if (allStudents) state.students = allStudents;
+        if (allExams) state.exams = allExams;
+        if (allQuestions) state.questions = allQuestions;
+        if (allSessions) state.exam_sessions = allSessions;
+
         if (cardRes && cardRes.data) {
           const localSaved = loadSavedCardConfig();
           const serverData = {};
