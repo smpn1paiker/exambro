@@ -2618,26 +2618,26 @@
               </div>
             </div>
 
-            <!-- IDENTITAS PESERTA UJIAN -->
-            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; background:#f8fafc; border:0.5px solid #e2e8f0; border-radius:1.5mm; padding:1mm 2mm; font-size:5.3pt; line-height:1.28;">
-              <div style="display:flex;">
-                <span style="width:16.5mm; font-weight:700; color:#475569;">Nama</span>
-                <span style="margin-right:1mm; font-weight:700;">:</span>
+            <!-- IDENTITAS PESERTA UJIAN (DIPERBESAR & DIPERJELAS) -->
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; background:#f8fafc; border:0.5px solid #e2e8f0; border-radius:1.5mm; padding:1.2mm 2mm; font-size:6.8pt; line-height:1.4;">
+              <div style="display:flex; margin-bottom: 0.5mm;">
+                <span style="width:19mm; font-weight:700; color:#475569;">Nama</span>
+                <span style="margin-right:1.5mm; font-weight:700;">:</span>
                 <span style="flex:1; font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name || '-')}</span>
               </div>
-              <div style="display:flex;">
-                <span style="width:16.5mm; font-weight:700; color:#475569;">Kelas</span>
-                <span style="margin-right:1mm; font-weight:700;">:</span>
-                <span style="flex:1; font-weight:700; color:#0f172a;">${escapeHtml(s.class_name || '-')}</span>
+              <div style="display:flex; margin-bottom: 0.5mm;">
+                <span style="width:19mm; font-weight:700; color:#475569;">Kelas</span>
+                <span style="margin-right:1.5mm; font-weight:700;">:</span>
+                <span style="flex:1; font-weight:800; color:#0f172a;">${escapeHtml(s.class_name || '-')}</span>
               </div>
-              <div style="display:flex;">
-                <span style="width:16.5mm; font-weight:700; color:#475569;">NISN</span>
-                <span style="margin-right:1mm; font-weight:700;">:</span>
+              <div style="display:flex; margin-bottom: 0.5mm;">
+                <span style="width:19mm; font-weight:700; color:#475569;">NISN</span>
+                <span style="margin-right:1.5mm; font-weight:700;">:</span>
                 <span style="flex:1; font-family:monospace; font-weight:800; color:#1d4ed8;">${escapeHtml(s.nisn || '-')}</span>
               </div>
               <div style="display:flex;">
-                <span style="width:16.5mm; font-weight:700; color:#475569;">Kata Sandi</span>
-                <span style="margin-right:1mm; font-weight:700;">:</span>
+                <span style="width:19mm; font-weight:700; color:#475569;">Kata Sandi</span>
+                <span style="margin-right:1.5mm; font-weight:700;">:</span>
                 <span style="flex:1; font-family:monospace; font-weight:800; color:#0f172a;">${escapeHtml(passText)}</span>
               </div>
             </div>
@@ -3176,14 +3176,11 @@
                   </div>
                 </div>
 
-                <!-- Tanda Tangan Kepala Sekolah -->
+                <!-- Tanda Tangan Kepala Sekolah (Kosong untuk TTD Basah & Cap Asli) -->
                 <div style="text-align:left; min-width:190px;">
                   <div>Mengetahui,</div>
                   <div style="font-weight:700;">Kepala Sekolah</div>
-                  ${cfg.principal_signature
-                    ? `<div style="height:48px; display:flex; align-items:center; margin:2px 0;"><img src="${cfg.principal_signature}" alt="TTD Kepsek" style="max-height:46px; object-fit:contain;" /></div>`
-                    : `<div style="height:50px;"></div>`
-                  }
+                  <div style="height:55px;"></div>
                   <div style="font-weight:800; text-decoration:underline;">${escapeHtml(cfg.principal_name)}</div>
                   <div>NIP. ${escapeHtml(cfg.principal_nip)}</div>
                 </div>
@@ -3192,7 +3189,7 @@
                 <div style="text-align:left; min-width:190px;">
                   <div>${escapeHtml(cfg.city_date)}</div>
                   <div style="font-weight:700;">Pengawas Ruang Ujian,</div>
-                  <div style="height:50px;"></div>
+                  <div style="height:55px;"></div>
                   <div style="font-weight:800; text-decoration:underline;">${escapeHtml(exam.proctor_name && exam.proctor_name !== '-' ? exam.proctor_name : '............................................')}</div>
                   <div>NIP. .......................................</div>
                 </div>
