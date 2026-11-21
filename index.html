@@ -3091,7 +3091,8 @@
                 <div style="display:flex;">
                   <span style="width:120px; font-weight:700;">Hari / Tanggal</span>
                   <span style="margin-right:6px;">:</span>
-                  <span style="font-weight:700;">...............................................................</span>
+                  <!-- Baris ini dikosongkan sepenuhnya agar bersih untuk diisi pena -->
+                  <span style="font-weight:700;"></span>
                 </div>
                 <div style="display:flex;">
                   <span style="width:120px; font-weight:700;">Kelas / Rombel</span>
@@ -3185,8 +3186,10 @@
                   <div>NIP. ${escapeHtml(cfg.principal_nip)}</div>
                 </div>
 
-                <!-- Tanda Tangan Pengawas Ujian (Teks Lokasi & Tanggal Dihapus) -->
+                <!-- Tanda Tangan Pengawas Ujian -->
                 <div style="text-align:left; min-width:190px;">
+                  <!-- Spacer tersembunyi agar tulisan Pengawas presisi 100% sejajar dengan tulisan Kepala Sekolah -->
+                  <div style="visibility:hidden;">Mengetahui,</div> 
                   <div style="font-weight:700;">Pengawas Ruang Ujian,</div>
                   <div style="height:55px;"></div>
                   <div style="font-weight:800; text-decoration:underline;">${escapeHtml(exam.proctor_name && exam.proctor_name !== '-' ? exam.proctor_name : '............................................')}</div>
